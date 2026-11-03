@@ -19,6 +19,22 @@ tasks:
     cmds:
       - ./{{.BIN_DIR}}/{{.BIN_NAME}}
 
+  test:
+    desc: Run all tests in the repository
+    cmds:
+      - go test ./...
+
+  cover:
+    desc: Run tests and generate a visual HTML coverage report
+    cmds:
+      - go test -coverprofile=cover.out ./...
+      - go tool cover -html=cover.out
+
+  race:
+    desc: Run race condition tests
+    cmds:
+      - go test --race ./...
+
   clean:
     desc: Remove binaries and clean the Go cache
     cmds:
