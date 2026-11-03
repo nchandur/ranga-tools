@@ -12,13 +12,6 @@ tasks:
       - go build -ldflags="-X main.version={{.VERSION}}" -o {{.BIN_DIR}}/{{.BIN_NAME}} ./cmd
       - chmod +x {{.BIN_DIR}}/{{.BIN_NAME}}
 
-  run:
-    desc: Build and execute the engine
-    deps:
-      - build
-    cmds:
-      - ./{{.BIN_DIR}}/{{.BIN_NAME}}
-
   test:
     desc: Run all tests in the repository
     cmds:
