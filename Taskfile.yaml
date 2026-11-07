@@ -9,7 +9,7 @@ tasks:
   build:
     desc: Build the Go binary for the engine
     cmds:
-      - go build -ldflags="-X main.version={{.VERSION}}" -o {{.BIN_DIR}}/{{.BIN_NAME}} ./cmd
+      - go build -ldflags="-X main.version={{.VERSION}}" -o {{.BIN_DIR}}/{{.BIN_NAME}} .
       - chmod +x {{.BIN_DIR}}/{{.BIN_NAME}}
 
   test:
@@ -63,4 +63,4 @@ tasks:
     requires:
       vars: [OS, ARCH]
     cmds:
-      - env CGO_ENABLED=0 GOOS={{.OS}} GOARCH={{.ARCH}} go build -ldflags="-X 'main.version={{.VERSION}}'" -o {{.BIN_DIR}}/{{.BIN_NAME}}-{{.OS}}-{{.ARCH}}{{if .EXT}}{{.EXT}}{{end}} ./cmd
+      - env CGO_ENABLED=0 GOOS={{.OS}} GOARCH={{.ARCH}} go build -ldflags="-X 'main.version={{.VERSION}}'" -o {{.BIN_DIR}}/{{.BIN_NAME}}-{{.OS}}-{{.ARCH}}{{if .EXT}}{{.EXT}}{{end}} .
