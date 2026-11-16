@@ -17,4 +17,5 @@ func init() {
 	engineCmd.AddCommand(registerCmd)
 	engineCmd.AddCommand(deregisterCmd)
 	engineCmd.AddCommand(listCmd)
+	engineCmd.AddCommand(useCmd)
 }

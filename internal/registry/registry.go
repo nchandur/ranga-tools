@@ -101,6 +101,21 @@ func (s *Store) List() ([]Entry, error) {
 	return entries, nil
 }
 
+// returns the entry whose slug matches
+func (s *Store) Get(name string) (Entry, error) {
+	slug := Slug(name)
+	entries, err := s.load()
+	if err != nil {
+		return Entry{}, err
+	}
+	for _, e := range entries {
+		if e.Slug == slug {
+			return e, nil
+		}
+	}
+	return Entry{}, ErrNotFound
+}
+
 func (s *Store) load() ([]Entry, error) {
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, fs.ErrNotExist) {
