@@ -1,0 +1,240 @@
+package board
+
+// random seed
+const SEED uint64 = 282000
+
+// file exclusion masks used to prevent wrapped across board edges
+const (
+	NotAFile  BitBoard = 0xfefefefefefefefe // masks out file A
+	NotHFile  BitBoard = 0x7f7f7f7f7f7f7f7f // masks out file H
+	NotABFile BitBoard = 0xfcfcfcfcfcfcfcfc // masks out files A and B
+	NotGHFile BitBoard = 0x3f3f3f3f3f3f3f3f // masks out files G and H
+
+)
+
+// precomputed non-sliding piece attack tables
+var (
+	PawnAttacks   = [2][64]BitBoard{} // lookup pawn attack masks indexed by [color][square]
+	KnightAttacks = [64]BitBoard{}    // lookup knight attack masks indexed by [square]
+	KingAttacks   = [64]BitBoard{}    // lookup king attack masks indexed by [square]
+)
+
+// precomputed sliding piece occupancy masks
+var (
+	BishopMasks = [64]BitBoard{} // stores relevant occupancy masks for bishops per square
+	RookMasks   = [64]BitBoard{} // stores relevant occupancy masks for rooks per square
+
+)
+
+// magic bitboard attack lookup tables indexed by [square][magic_index]
+var (
+	BishopAttacks = [64][512]BitBoard{}  // attack tables for bishops
+	RookAttacks   = [64][4096]BitBoard{} // attack tables for rooks
+)
+
+// defines number of set bits in relevant occupancy mask for bishop on each square
+var BishopRelevantOccupancy = [64]int{
+	6, 5, 5, 5, 5, 5, 5, 6,
+	5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 7, 7, 7, 7, 5, 5,
+	5, 5, 7, 9, 9, 7, 5, 5,
+	5, 5, 7, 9, 9, 7, 5, 5,
+	5, 5, 7, 7, 7, 7, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5,
+	6, 5, 5, 5, 5, 5, 5, 6,
+}
+
+// defines number of set bits in relevant occupancy mask for rook on each square
+var RookRelevantOccupancy = [64]int{
+	12, 11, 11, 11, 11, 11, 11, 12,
+	11, 10, 10, 10, 10, 10, 10, 11,
+	11, 10, 10, 10, 10, 10, 10, 11,
+	11, 10, 10, 10, 10, 10, 10, 11,
+	11, 10, 10, 10, 10, 10, 10, 11,
+	11, 10, 10, 10, 10, 10, 10, 11,
+	11, 10, 10, 10, 10, 10, 10, 11,
+	12, 11, 11, 11, 11, 11, 11, 12,
+}
+
+// castle rights for each square
+var CastleRights = []Castle{
+	7, 15, 15, 15, 3, 15, 15, 11,
+	15, 15, 15, 15, 15, 15, 15, 15,
+	15, 15, 15, 15, 15, 15, 15, 15,
+	15, 15, 15, 15, 15, 15, 15, 15,
+	15, 15, 15, 15, 15, 15, 15, 15,
+	15, 15, 15, 15, 15, 15, 15, 15,
+	15, 15, 15, 15, 15, 15, 15, 15,
+	13, 15, 15, 15, 12, 15, 15, 14,
+}
+
+// magic numbers
+var RookMagicNumbers = [64]BitBoard{
+	0x00800021803C4000,
+	0x8240021000200042,
+	0x5100200008110040,
+	0x0100040820100100,
+	0x2080080002800401,
+	0x0100020400080100,
+	0x0480008001001200,
+	0x490008C1000083A6,
+	0x0841002041008000,
+	0x8000400020100044,
+	0x001100130440A002,
+	0x2241002100100008,
+	0x0400800400800800,
+	0x0E02000402001009,
+	0x000A0002001C2801,
+	0xA006000C81144402,
+	0x20C0008000402090,
+	0x2000828040002000,
+	0x0000848010002000,
+	0x0262020010082040,
+	0x0001010008001004,
+	0x9000080120041040,
+	0x8804840010020108,
+	0x0100220010810054,
+	0x0000400280008020,
+	0x0400500140002000,
+	0x30C0144100200100,
+	0x2010040040080041,
+	0x0000110100040800,
+	0x1000040080800200,
+	0x00001D4400900802,
+	0x6000004200140881,
+	0x0202004082002100,
+	0x0000402008401000,
+	0x6400802000801000,
+	0x1818020A80801000,
+	0x0108008008800402,
+	0x4002001002000408,
+	0x0080800100800200,
+	0xA008008906000244,
+	0x0060244000828000,
+	0x0000400020008080,
+	0x4800200041010010,
+	0x0000080010008080,
+	0x1000080004008080,
+	0x0009042040080110,
+	0x0800081081440012,
+	0x0344104110920004,
+	0x0862150088402200,
+	0x1050400100208900,
+	0x2200100020008480,
+	0x0242001408402200,
+	0x2142002110040A00,
+	0x0942000400028080,
+	0x0011121049082400,
+	0x2001800041000080,
+	0x0000488000142101,
+	0x0000104600228502,
+	0x20030040C8156001,
+	0x0008080420100101,
+	0x3082001008200446,
+	0x0202001008010402,
+	0x0620101248010084,
+	0x00080406550080A2,
+}
+
+var BishopMagicNumbers = [64]BitBoard{
+	0x0040100102008010,
+	0x0010700081204404,
+	0x0010810041061010,
+	0xA808160048000000,
+	0x3004052100002020,
+	0x0001040242204400,
+	0x0800809010100801,
+	0x0409040A01010810,
+	0x0800200401024404,
+	0x8040082248060020,
+	0x0000100ACA00C242,
+	0x0001382088280100,
+	0x0210820210401008,
+	0x0002020802480250,
+	0x004C84480C900800,
+	0x0012008841082010,
+	0x20E8204182840400,
+	0x0120004401020222,
+	0x8030000124002040,
+	0x8008044920404000,
+	0x500C000480A00000,
+	0x0002000100908440,
+	0x2904804042101144,
+	0x6043500101009008,
+	0x0424410424090808,
+	0x80641202201A0420,
+	0x108611004A080200,
+	0x00040041A4010480,
+	0x0101001001004008,
+	0x040802A062008C41,
+	0x023210A084008809,
+	0xA00E042022008A40,
+	0x0901102820425800,
+	0x4408080280844404,
+	0x0800802089140800,
+	0x9200020084080080,
+	0x8001290400020020,
+	0x0019060C084A0100,
+	0x0104008C0B421120,
+	0x0028008100008048,
+	0x08092822C0491000,
+	0x0400480290004800,
+	0x2842002201060808,
+	0x2124082011085806,
+	0x0000102012008040,
+	0x1008100080200200,
+	0x8020120096000108,
+	0x4030408200830040,
+	0x8002010420050080,
+	0xA000241128380000,
+	0x004004441C042810,
+	0x1000002210440048,
+	0x0002000405040800,
+	0x0690421006298042,
+	0x95204890030A6204,
+	0x0402100626014004,
+	0x0308220C44200802,
+	0x1000008200904408,
+	0x0100121022011000,
+	0x42180404C0842400,
+	0x4000240020042401,
+	0x4280041003900100,
+	0x002050120A084209,
+	0x024001180A008020,
+}
+
+// print pieces
+const PieceChar = "PNBRQKpnbrqk "
+
+// piece color lookup
+var PieceColor = [13]Color{
+	WP:    White,
+	WN:    White,
+	WB:    White,
+	WR:    White,
+	WQ:    White,
+	WK:    White,
+	BP:    Black,
+	BN:    Black,
+	BB:    Black,
+	BR:    Black,
+	BQ:    Black,
+	BK:    Black,
+	Empty: Both,
+}
+
+// static piece value
+var PieceValue = [13]int{
+	WP: 100,
+	WN: 325,
+	WB: 325,
+	WR: 500,
+	WQ: 800,
+	WK: 10000,
+	BP: -100,
+	BN: -325,
+	BB: -325,
+	BR: -500,
+	BQ: -800,
+	BK: -10000,
+}
