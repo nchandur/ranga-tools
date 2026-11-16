@@ -10,7 +10,7 @@ import (
 
 var registerCmd = &cobra.Command{
 	Use:   "register",
-	Short: "Verify and register UCI engine",
+	Short: "verify and register UCI engine",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
