@@ -129,8 +129,7 @@ func run(t Tournament, fastchessOverride string) error {
 	defer signal.Stop(sigs)
 
 	if err := cmd.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			return fmt.Errorf("fastchess exited with code %d", exitErr.ExitCode())
 		}
 		return fmt.Errorf("run fastchess: %w", err)

@@ -128,8 +128,8 @@ func evaluate(s *uci.Session, g *pgn.Game, b *board.Board, k, depth int) (posEva
 		ev.side = "black"
 	}
 
-	if !hasLegalMove(b) {
-		if inCheck(b) {
+	if !b.HasLegalMove() {
+		if b.InCheck() {
 			ev.win, ev.eval = 0, Eval{Terminal: "checkmate"}
 		} else {
 			ev.win, ev.eval = 50, Eval{Terminal: "stalemate"}
@@ -159,26 +159,4 @@ func whiteEval(s uci.Score, side board.Color) Eval {
 	}
 	cp := sign * s.CP
 	return Eval{CP: &cp}
-}
-
-// reports whether the side to move has any legal move
-func hasLegalMove(b *board.Board) bool {
-	list := board.NewMoveList()
-	list.GenerateMoves(b)
-	for n := range list.Count {
-		c := b.Preserve()
-		if c.MakeMove(list.Moves[n], false) {
-			return true
-		}
-	}
-	return false
-}
-
-// reports whether the side to move is in check
-func inCheck(b *board.Board) bool {
-	king, attacker := board.WK, board.Black
-	if b.Side == board.Black {
-		king, attacker = board.BK, board.White
-	}
-	return b.IsSquareAttacked(board.Square(b.PieceBitBoards[king].GetLSB()), attacker)
 }

@@ -6,6 +6,7 @@ Ranga-Tools is a command-line interface (CLI) designed for managing, configuring
 
 - **Engine Management**: Register, list, and deregister UCI chess engines
 - **Tournament Execution**: Run Sequential Probability Ratio Tests (SPRT) between engines to measure Elo improvements
+- **Analysis**: Parses PGN game and provides an analysis report on performance and strength
 
 ## Installation and Prerequisites
 
@@ -29,4 +30,5 @@ ranga-tools config set fastchess-path <path-to-fastchess>
 
 1. Managing Engines (`engine`): Refer [here](docs/engine.md)
 2. Running Tournaments (`tournament`): Refer [here](docs/tournament.md)
-3. Configuration Management (`config`): Refer [here](docs/config.md)
+3. Running Analysis (`analyze`): Refer [here](docs/analysis.md) 
+4. Configuration Management (`config`): Refer [here](docs/config.md)

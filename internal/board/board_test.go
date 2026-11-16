@@ -656,7 +656,6 @@ func TestBoard_ParseMove(t *testing.T) {
 		move := b.ParseMove(moveStr)
 
 		if move != expected {
-			b.Print()
 			t.Errorf("expected: %s\noutput: %s\n", expected, move)
 		}
 
