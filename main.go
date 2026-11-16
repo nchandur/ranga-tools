@@ -1,7 +1,21 @@
 package main
 
-import "github.com/nchandur/ranga-tools/cmd"
+import (
+	"fmt"
+	"log"
+
+	"github.com/nchandur/ranga-tools/internal/uci"
+)
 
 func main() {
-	cmd.Execute()
+
+	info, err := uci.Verify("")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(info)
+
+	// cmd.Execute()
 }
