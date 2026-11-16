@@ -76,3 +76,16 @@ func List() ([]registry.Entry, error) {
 	}
 	return store.List()
 }
+
+// returns the registered engine for name
+func Lookup(name string) (registry.Entry, error) {
+	store, err := registry.Default()
+	if err != nil {
+		return registry.Entry{}, err
+	}
+	entry, err := store.Get(name)
+	if errors.Is(err, registry.ErrNotFound) {
+		return registry.Entry{}, fmt.Errorf("no engine named %q is registered", name)
+	}
+	return entry, err
+}
