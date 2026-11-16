@@ -13,6 +13,7 @@ func Cmd() *cobra.Command { return tournamentCmd }
 
 func init() {
 	tournamentCmd.AddCommand(sprtCmd)
+	tournamentCmd.AddCommand(selfTestCmd)
 }
 
 func newTournamentCmd(use, short string, run func(config, fastchess string) error) *cobra.Command {

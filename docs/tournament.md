@@ -41,3 +41,36 @@ Both engines involved must be registered with the tool prior to running this com
 ```
 
 The test results will be saved in an output directory located in the same directory as your configuration file.
+
+## Selftest
+
+This command executes a selftest between an engine and itself. Use the following command to run the test:
+```bash
+ranga-tools tournament selftest --config <path-to-config>
+```
+
+The engine must be registered with the tool prior to running this command. You can define the selftest parameters in a JSON configuration file, as shown in the example below:
+
+```json
+{
+  "engine": {
+    "name": "ranga-1.21",
+    "options": { "Hash": "128", "Threads": "1" }
+  },
+
+  "tc": "1+0.1",
+  "nodes": 5000,
+
+  "rounds": 10,
+  "games": 1,
+  "concurrency": 3,
+
+  "openings": {
+    "file": "books/UHO_Lichess_4852_v1.epd",
+    "format": "epd"
+  },
+  
+  "output_dir": "output",
+  "extra_args": ["-ratinginterval", "5"]
+}
+```
