@@ -1,11 +1,14 @@
 package uci
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 	"time"
 )
+
+var ErrNoName = errors.New("engine did not report an \"id name\"; use --name to provide one")
 
 const (
 	StepTimeout = 5 * time.Second // how long we wait for each handshake step

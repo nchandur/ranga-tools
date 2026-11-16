@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nchandur/ranga-tools/cmd/engine"
 	"github.com/spf13/cobra"
 )
 
@@ -20,4 +21,5 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.AddCommand(engine.Cmd())
 }
