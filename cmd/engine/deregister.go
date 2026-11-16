@@ -8,7 +8,7 @@ import (
 )
 
 var deregisterCmd = &cobra.Command{
-	Use:   "delete",
+	Use:   "deregister",
 	Short: "remove registered engine",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -6,7 +6,7 @@ import (
 
 var tournamentCmd = &cobra.Command{
 	Use:   "tournament",
-	Short: "Run engine tournaments through fastchess",
+	Short: "run engine tournaments through fastchess",
 }
 
 func Cmd() *cobra.Command { return tournamentCmd }
