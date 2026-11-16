@@ -47,6 +47,15 @@ func Default() (*Store, error) {
 	return &Store{path: filepath.Join(dir, appDir, fileName)}, nil
 }
 
+// returns where all of the tool's files live
+func Dir() (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("locate user config dir: %w", err)
+	}
+	return filepath.Join(base, appDir), nil
+}
+
 // lowercases name and replaces whitespace with a single hyphen
 func Slug(name string) string {
 	return strings.ToLower(strings.Join(strings.Fields(name), "-"))
