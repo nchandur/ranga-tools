@@ -1,108 +1,76 @@
 package uci
 
 import (
-	"bufio"
-	"context"
+	"errors"
 	"fmt"
-	"io"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 )
 
-// represents running UCI engine process and its communication pipes
-type Client struct {
-	Path    string
-	process *exec.Cmd
-	stdin   io.WriteCloser
-	stdout  *bufio.Scanner
+var ErrNoName = errors.New("engine did not report an \"id name\"; use --name to provide one")
+
+const (
+	StepTimeout = 5 * time.Second // how long we wait for each handshake step
+	quitGrace   = time.Second     // quitGrace is how long we let the engine exit on its own
+)
+
+// holds the identity an engine reports during the UCI handshake.
+type Info struct {
+	Name   string
+	Author string
 }
 
-// verifies binary, spawns process, and performs UCI handshake
-func Load(path string) (*Client, error) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil, fmt.Errorf("engine file not found: %s", path)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, path)
+// launches the executable at path and performs UCI handshake
+func Verify(path string) (Info, error) {
+	cmd := exec.Command(path)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
+		return Info{}, fmt.Errorf("open engine stdin: %w", err)
 	}
-
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+		return Info{}, fmt.Errorf("open engine stdout: %w", err)
 	}
-
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start engine process: %w", err)
+		return Info{}, fmt.Errorf("start engine: %w", err)
 	}
 
-	client := &Client{
-		Path:    path,
-		process: cmd,
-		stdin:   stdin,
-		stdout:  bufio.NewScanner(stdout),
+	stop := make(chan struct{})
+	lines := readLines(stdout, stop)
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	defer func() {
+		close(stop)
+		shutdown(cmd, stdin, done)
+	}()
+
+	var info Info
+
+	if err := send(stdin, "uci"); err != nil {
+		return Info{}, err
 	}
-
-	if err := client.handshake(); err != nil {
-		client.Close()
-		return nil, err
-	}
-
-	return client, nil
-}
-
-// handshake sequentially verifies UCI protocol compliance
-func (c *Client) handshake() error {
-	if _, err := fmt.Fprintln(c.stdin, "uci"); err != nil {
-		return fmt.Errorf("failed to write 'uci': %w", err)
-	}
-
-	uciok := false
-	for c.stdout.Scan() {
-		line := strings.TrimSpace(c.stdout.Text())
-		if line == "uciok" {
-			uciok = true
-			break
+	err = waitFor(lines, "uciok", func(line string) {
+		switch {
+		case strings.HasPrefix(line, "id name "):
+			info.Name = strings.TrimSpace(strings.TrimPrefix(line, "id name "))
+		case strings.HasPrefix(line, "id author "):
+			info.Author = strings.TrimSpace(strings.TrimPrefix(line, "id author "))
 		}
-	}
-	if !uciok {
-		return fmt.Errorf("engine did not respond with 'uciok'")
-	}
-
-	if _, err := fmt.Fprintln(c.stdin, "isready"); err != nil {
-		return fmt.Errorf("failed to write 'isready': %w", err)
+	})
+	if err != nil {
+		return Info{}, err
 	}
 
-	readyok := false
-	for c.stdout.Scan() {
-		line := strings.TrimSpace(c.stdout.Text())
-		if line == "readyok" {
-			readyok = true
-			break
-		}
+	if err := send(stdin, "isready"); err != nil {
+		return Info{}, err
 	}
-	if !readyok {
-		return fmt.Errorf("engine did not respond with 'readyok'")
+	if err := waitFor(lines, "readyok", nil); err != nil {
+		return Info{}, err
 	}
 
-	return nil
-}
-
-// gracefully terminates engine process
-func (c *Client) Close() {
-	if c.stdin != nil {
-		fmt.Fprintln(c.stdin, "quit")
-		c.stdin.Close()
-	}
-	if c.process != nil {
-		c.process.Wait()
-	}
+	return info, nil
 }

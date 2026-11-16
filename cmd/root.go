@@ -4,20 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nchandur/ranga-tools/internal/uci"
+	"github.com/nchandur/ranga-tools/cmd/engine"
 	"github.com/spf13/cobra"
 )
 
-// AppContext stores persistent state across commands
-type AppContext struct {
-	EngineClient *uci.Client
-}
-
-var appState = &AppContext{}
-
 var rootCmd = &cobra.Command{
-	Use:   "chess-cli",
-	Short: "A CLI tool for analyzing PGN games with UCI engines",
+	Use:   "ranga-tools",
+	Short: "A CLI for a doing a bunch of stuff with UCI chess engines",
 }
 
 func Execute() {
@@ -25,4 +18,8 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func init() {
+	rootCmd.AddCommand(engine.Cmd())
 }
