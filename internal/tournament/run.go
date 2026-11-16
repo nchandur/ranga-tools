@@ -71,7 +71,7 @@ func validateEngines(specs []EngineSpec) error {
 		if strings.TrimSpace(s.Name) == "" {
 			return fmt.Errorf(`"%s.name" is required`, s.Role)
 		}
-		slug := registry.Slug(s.Name)
+		slug := registry.Slug(s.Name + s.Suffix)
 		if other, dup := seen[slug]; dup {
 			return fmt.Errorf("%s and %s must be different engines", other, s.Role)
 		}
@@ -191,7 +191,7 @@ func buildArgs(c *Common, specs []EngineSpec, entries []registry.Entry, outDir s
 }
 
 func engineArgs(e registry.Entry, spec EngineSpec) []string {
-	args := []string{"-engine", "cmd=" + e.Path, "name=" + e.Name}
+	args := []string{"-engine", "cmd=" + e.Path, "name=" + e.Name + spec.Suffix}
 
 	keys := make([]string, 0, len(spec.Options))
 	for k := range spec.Options {

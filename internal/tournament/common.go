@@ -18,6 +18,7 @@ type EngineSpec struct {
 	Name    string         `json:"name"`
 	Options map[string]any `json:"options"`
 	Role    string         `json:"-"`
+	Suffix  string         `json:"-"`
 }
 
 type Openings struct {
