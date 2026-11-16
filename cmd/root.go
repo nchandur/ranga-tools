@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nchandur/ranga-tools/cmd/analyze"
 	"github.com/nchandur/ranga-tools/cmd/config"
 	"github.com/nchandur/ranga-tools/cmd/engine"
 	"github.com/nchandur/ranga-tools/cmd/tournament"
@@ -26,4 +27,5 @@ func init() {
 	rootCmd.AddCommand(engine.Cmd())
 	rootCmd.AddCommand(tournament.Cmd())
 	rootCmd.AddCommand(config.Cmd())
+	rootCmd.AddCommand(analyze.Cmd())
 }

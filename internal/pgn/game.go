@@ -2,7 +2,6 @@ package pgn
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -16,34 +15,44 @@ var resultRe = regexp.MustCompile(`\[Result\s*"(.+)"\]`)
 var fenRe = regexp.MustCompile(`\[FEN\s*"(.+)"\]`)
 var taglineRe = regexp.MustCompile(`(?m)^\s*\[.*\]\s*$`)
 var scoreRe = regexp.MustCompile(`\[%eval\s+([+-])?(?:M([0-9]+)|([0-9]+(?:\.[0-9]+)?))\]`)
+var variantRe = regexp.MustCompile(`\[Variant\s*"(.+)"\]`)
 
 // marks the start of a new game header block
 var eventTagPattern = regexp.MustCompile(`(?m)^\[Event\s`)
 
 type Game struct {
-	White  string
-	Black  string
-	Result float32
-	FEN    string
-	Moves  []string
+	White   string
+	Black   string
+	Result  float32
+	FEN     string
+	Variant string
+	Moves   []string
+	SAN     []string
 	board.Board
 }
 
 func NewGame(pgn string) (Game, error) {
-
 	var game Game
 	game.Board = board.NewBoard()
 	game.parsePlayers(pgn)
 	game.parseResult(pgn)
 	game.parseFEN(pgn)
+	game.parseVariant(pgn)
 
 	if err := game.Board.ParseFEN(game.FEN); err != nil {
 		return Game{}, err
 	}
-
-	game.parseMoves(pgn)
-
+	if err := game.parseMoves(pgn); err != nil {
+		return Game{}, err
+	}
 	return game, nil
+}
+
+// parse type of chess variant
+func (g *Game) parseVariant(pgn string) {
+	if m := variantRe.FindStringSubmatch(pgn); len(m) > 0 {
+		g.Variant = strings.TrimSpace(m[1])
+	}
 }
 
 // parse players
@@ -81,29 +90,31 @@ func (g *Game) parseFEN(pgn string) {
 }
 
 // parse moves
-func (g *Game) parseMoves(pgn string) {
-	movetext := extractMovetext(pgn)
-
-	pairs, err := tokenizeWithComments(movetext)
+func (g *Game) parseMoves(pgn string) error {
+	pairs, err := tokenizeWithComments(extractMovetext(pgn))
 	if err != nil {
-		log.Fatalf("failed to tokenize movetext: %v", err)
+		return fmt.Errorf("movetext: %w", err)
 	}
 
-	g.Moves = make([]string, len(pairs))
+	g.Moves = make([]string, 0, len(pairs))
+	g.SAN = make([]string, 0, len(pairs))
 
 	b := g.Board.Preserve()
 
 	for i, p := range pairs {
 		m := ParseSAN(&b, p.san)
 		if m == board.NOMOVE {
-			log.Fatalf("move %d (%q): unparseable SAN", i+1, p.san)
+			return fmt.Errorf("ply %d (%q) is illegal or unparseable in position %s", i+1, p.san, b.FEN())
 		}
-
-		g.Moves[i] = m.String()
-
-		b.MakeMove(m, false)
+		if !b.MakeMove(m, false) {
+			return fmt.Errorf("ply %d (%q) leaves the king in check in position %s", i+1, p.san, b.FEN())
+		}
 		b.Ply++
+
+		g.Moves = append(g.Moves, m.String())
+		g.SAN = append(g.SAN, p.san)
 	}
+	return nil
 }
 
 // returns everything in the PGN after the last header tag
@@ -114,6 +125,15 @@ func extractMovetext(pgn string) string {
 	}
 	last := matches[len(matches)-1]
 	return pgn[last[1]:]
+}
+
+// reports whether game is ordinary chess
+func (g *Game) IsStandard() bool {
+	switch strings.ToLower(g.Variant) {
+	case "", "standard", "chess", "from position":
+		return true
+	}
+	return false
 }
 
 // replays moves on board returns one line per ply
@@ -160,8 +180,13 @@ func (g *Game) GenerateLines() ([]string, error) {
 
 // splits a file containing multiple concatenated PGN games into individual games
 func SplitGames(data string) []string {
+	data = strings.TrimPrefix(data, "\ufeff")
+
 	idx := eventTagPattern.FindAllStringIndex(data, -1)
 	if len(idx) == 0 {
+		if t := strings.TrimSpace(data); t != "" {
+			return []string{t}
+		}
 		return nil
 	}
 
@@ -178,6 +203,19 @@ func SplitGames(data string) []string {
 		}
 	}
 	return games
+}
+
+// reads PGN file and parses only its first game.
+func ParseFirstGame(source string) (Game, error) {
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return Game{}, fmt.Errorf("reading file: %w", err)
+	}
+	games := SplitGames(string(data))
+	if len(games) == 0 {
+		return Game{}, fmt.Errorf("no game found in %s", source)
+	}
+	return NewGame(games[0])
 }
 
 // reads a file containing n concatenated PGN games

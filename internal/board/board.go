@@ -329,6 +329,10 @@ func (b *Board) MakeMove(move Move, onlyCaptures bool) bool {
 // converts a UCI move string into a valid move
 func (b *Board) ParseMove(move string) Move {
 
+	if len(move) < 4 {
+		return NOMOVE
+	}
+
 	if move[1] > '8' || move[1] < '1' {
 		return NOMOVE
 	}

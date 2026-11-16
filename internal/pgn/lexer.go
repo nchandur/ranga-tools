@@ -65,11 +65,12 @@ func tokenizeWithComments(movetext string) ([]moveComment, error) {
 				}
 				j++
 			}
-			word := movetext[i:j]
+			word := stripMoveNumber(movetext[i:j])
+			word = strings.TrimRight(word, "!?")
 			i = j
 
 			switch {
-			case isResultToken(word), isMoveNumber(word), strings.HasPrefix(word, "$"):
+			case word == "", isResultToken(word), isMoveNumber(word), strings.HasPrefix(word, "$"):
 			default:
 				pairs = append(pairs, moveComment{san: word})
 				lastIdx = len(pairs) - 1
@@ -128,4 +129,18 @@ func extractScore(comment string) int {
 	}
 
 	return int(math.Round(pawns * 100))
+}
+
+func stripMoveNumber(w string) string {
+	i := 0
+	for i < len(w) && w[i] >= '0' && w[i] <= '9' {
+		i++
+	}
+	if i == 0 || i == len(w) || w[i] != '.' {
+		return w
+	}
+	for i < len(w) && w[i] == '.' {
+		i++
+	}
+	return w[i:]
 }
