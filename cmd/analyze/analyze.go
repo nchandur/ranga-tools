@@ -78,7 +78,7 @@ func init() {
 	f := analyzeCmd.Flags()
 	f.String("pgn", "", "path to the PGN file (only the first game is analyzed)")
 	f.String("engine", "", "registered name of the engine to analyze with")
-	f.String("strength", string(analysis.Medium), "analysis strength: low, medium or high")
+	f.String("strength", string(analysis.Low), "analysis strength: low, medium or high")
 	f.String("json", "", "write the full report to this JSON file instead of printing it")
 
 	analyzeCmd.MarkFlagRequired("pgn")

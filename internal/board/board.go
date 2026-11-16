@@ -1,9 +1,5 @@
 package board
 
-import (
-	"fmt"
-)
-
 // represents complete chess board state
 type Board struct {
 	PieceBitBoards [12]BitBoard // bitboards for each piece
@@ -373,27 +369,24 @@ func (b *Board) ParseMove(move string) Move {
 	return NOMOVE
 }
 
-func (b *Board) Print() {
-	fmt.Println("     a   b   c   d   e   f   g   h")
-	fmt.Println("   +---+---+---+---+---+---+---+---+")
-
-	for rank := 0; rank <= 7; rank++ {
-		fmt.Printf(" %d |", 8-rank)
-
-		for file := 0; file <= 7; file++ {
-			sq := FRtoSq(rank, file)
-			piece := b.Mailbox[sq]
-			fmt.Printf(" %c |", PieceChar[piece])
+// reports whether the side to move has any legal move
+func (b *Board) HasLegalMove() bool {
+	list := NewMoveList()
+	list.GenerateMoves(b)
+	for n := range list.Count {
+		c := b.Preserve()
+		if c.MakeMove(list.Moves[n], false) {
+			return true
 		}
-
-		fmt.Printf(" %d\n", 8-rank)
-		fmt.Println("   +---+---+---+---+---+---+---+---+")
 	}
+	return false
+}
 
-	fmt.Println("     a   b   c   d   e   f   g   h")
-
-	fmt.Printf("\nSide to Move : %c\n", b.Side.String())
-	fmt.Printf("En Passant   : %s\n", b.EnPassant)
-	fmt.Printf("Castling     : %s\n", b.Castle)
-	fmt.Printf("Zobrist      : 0x%x\n", b.Key)
+// reports whether the side to move is in check
+func (b *Board) InCheck() bool {
+	king, attacker := WK, Black
+	if b.Side == Black {
+		king, attacker = BK, White
+	}
+	return b.IsSquareAttacked(Square(b.PieceBitBoards[king].GetLSB()), attacker)
 }

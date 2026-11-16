@@ -34,8 +34,7 @@ func Use(name string) error {
 	defer signal.Stop(sigs)
 
 	if err := cmd.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			return fmt.Errorf("engine %q exited with code %d", entry.Name, exitErr.ExitCode())
 		}
 		return fmt.Errorf("run engine %q: %w", entry.Name, err)
