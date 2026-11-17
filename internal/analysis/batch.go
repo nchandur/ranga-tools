@@ -7,16 +7,25 @@ import (
 	"github.com/nchandur/ranga-tools/internal/pgn"
 )
 
-// outcome of one game in a batch
+// one game to analyze
+type Job struct {
+	Number int
+	Text   string
+}
+
+// outcome of one game
 type GameResult struct {
 	Index  int
 	Report *Report
 	Err    error
 }
 
-// analyzes every game using `workers` engine sessions in parallel
-func AnalyzeBatch(games []string, opts Options, workers int, emit func(GameResult)) error {
-	workers = min(max(workers, 1), len(games))
+// analyzes jobs with `workers` engine sessions in parallel
+func AnalyzeBatch(jobs []Job, opts Options, workers int, emit func(GameResult)) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	workers = min(max(workers, 1), len(jobs))
 
 	analyzers := make([]*Analyzer, 0, workers)
 	defer func() {
@@ -25,32 +34,37 @@ func AnalyzeBatch(games []string, opts Options, workers int, emit func(GameResul
 		}
 	}()
 	for range workers {
-		opts.Progress = nil
-		a, err := NewAnalyzer(opts)
+		o := opts
+		o.Progress = nil // per-position progress makes no sense across workers
+		a, err := NewAnalyzer(o)
 		if err != nil {
 			return err
 		}
 		analyzers = append(analyzers, a)
 	}
 
-	jobs := make(chan int)
-	results := make(chan GameResult)
+	type item struct {
+		seq int
+		res GameResult
+	}
+	seqs := make(chan int)
+	results := make(chan item)
 
 	var wg sync.WaitGroup
 	for _, a := range analyzers {
 		wg.Add(1)
 		go func(a *Analyzer) {
 			defer wg.Done()
-			for i := range jobs {
-				results <- analyzeOne(a, i+1, games[i])
+			for i := range seqs {
+				results <- item{i, analyzeOne(a, jobs[i])}
 			}
 		}(a)
 	}
 	go func() {
-		for i := range games {
-			jobs <- i
+		for i := range jobs {
+			seqs <- i
 		}
-		close(jobs)
+		close(seqs)
 	}()
 	go func() {
 		wg.Wait()
@@ -58,10 +72,14 @@ func AnalyzeBatch(games []string, opts Options, workers int, emit func(GameResul
 	}()
 
 	pending := map[int]GameResult{}
-	next := 1
-	for r := range results {
-		pending[r.Index] = r
-		for p, ok := pending[next]; ok; p, ok = pending[next] {
+	next := 0
+	for it := range results {
+		pending[it.seq] = it.res
+		for {
+			p, ok := pending[next]
+			if !ok {
+				break
+			}
 			delete(pending, next)
 			emit(p)
 			next++
@@ -70,17 +88,17 @@ func AnalyzeBatch(games []string, opts Options, workers int, emit func(GameResul
 	return nil
 }
 
-func analyzeOne(a *Analyzer, index int, text string) GameResult {
-	g, err := pgn.NewGame(text)
+func analyzeOne(a *Analyzer, j Job) GameResult {
+	g, err := pgn.NewGame(j.Text)
 	if err != nil {
-		return GameResult{Index: index, Err: err}
+		return GameResult{Index: j.Number, Err: err}
 	}
 	rep, err := a.Analyze(&g)
 	if err != nil {
-		return GameResult{Index: index, Err: err}
+		return GameResult{Index: j.Number, Err: err}
 	}
-	rep.Game = index
-	return GameResult{Index: index, Report: rep}
+	rep.Game = j.Number
+	return GameResult{Index: j.Number, Report: rep}
 }
 
 func (r GameResult) String() string {

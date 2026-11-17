@@ -58,10 +58,15 @@ var analyzeCmd = &cobra.Command{
 			return fmt.Errorf("--game and --workers must be at least 1")
 		}
 
+		player, err := cmd.Flags().GetString("player")
+		if err != nil {
+			return err
+		}
+
 		cmd.SilenceUsage = true
 
-		if all {
-			return runBatch(cmd, pgnPath, entry.Path, strength, workers, jsonPath)
+		if all || player != "" {
+			return runBatch(cmd, pgnPath, entry.Path, strength, workers, jsonPath, player)
 		}
 
 		game, err := pgn.ParseGameN(pgnPath, gameNum)
@@ -91,6 +96,7 @@ var analyzeCmd = &cobra.Command{
 		}
 
 		printReport(cmd.OutOrStdout(), report, duration)
+		fmt.Fprintf(cmd.OutOrStdout(), "Analysis Completed in %s", formatDuration(duration))
 		return nil
 	},
 }
@@ -106,6 +112,8 @@ func init() {
 	f.Int("game", 1, "which game in the PGN to analyze (1-based)")
 	f.Bool("all", false, "analyze every game in the PGN")
 	f.Int("workers", 1, "engines to run in parallel with --all (each uses its own hash memory)")
+	f.String("player", "", "analyze only this player's games (case-insensitive regex on the PGN names; implies --all)")
+	analyzeCmd.MarkFlagsMutuallyExclusive("game", "player")
 	analyzeCmd.MarkFlagsMutuallyExclusive("game", "all")
 
 	analyzeCmd.MarkFlagRequired("pgn")

@@ -9,6 +9,9 @@ import (
 	"github.com/nchandur/ranga-tools/internal/board"
 )
 
+// marks game with no result
+const ResultUnknown float32 = -1
+
 var whiteRe = regexp.MustCompile(`\[White\s*"(.+)"\]`)
 var blackRe = regexp.MustCompile(`\[Black\s*"(.+)"\]`)
 var resultRe = regexp.MustCompile(`\[Result\s*"(.+)"\]`)
@@ -34,10 +37,11 @@ type Game struct {
 func NewGame(pgn string) (Game, error) {
 	var game Game
 	game.Board = board.NewBoard()
-	game.parsePlayers(pgn)
+	game.Result = ResultUnknown
 	game.parseResult(pgn)
 	game.parseFEN(pgn)
 	game.parseVariant(pgn)
+	game.White, game.Black = Players(pgn)
 
 	if err := game.Board.ParseFEN(game.FEN); err != nil {
 		return Game{}, err
@@ -56,14 +60,17 @@ func (g *Game) parseVariant(pgn string) {
 }
 
 // parse players
-func (g *Game) parsePlayers(pgn string) {
+func Players(pgn string) (string, string) {
+	var white, black string
 	if matches := whiteRe.FindStringSubmatch(pgn); len(matches) > 0 {
-		g.White = matches[1]
+		white = matches[1]
 	}
 
 	if matches := blackRe.FindStringSubmatch(pgn); len(matches) > 0 {
-		g.Black = matches[1]
+		black = matches[1]
 	}
+
+	return white, black
 }
 
 // parse result
@@ -76,6 +83,8 @@ func (g *Game) parseResult(pgn string) {
 			g.Result = 0.0
 		case "1/2-1/2":
 			g.Result = 0.5
+		default:
+			g.Result = ResultUnknown
 		}
 	}
 }

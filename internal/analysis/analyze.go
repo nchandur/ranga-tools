@@ -116,6 +116,8 @@ func (a *Analyzer) Analyze(g *pgn.Game) (*Report, error) {
 		rep.Result = "Draw"
 	case 0.0:
 		rep.Result = "Black Wins"
+	default:
+		rep.Result = "Unknown"
 	}
 
 	for k := range n {

@@ -23,7 +23,7 @@ type gameRow struct {
 	BlunW, BlunB int
 }
 
-func runBatch(cmd *cobra.Command, pgnPath, enginePath string, strength analysis.Strength, workers int, jsonPath string) error {
+func runBatch(cmd *cobra.Command, pgnPath, enginePath string, strength analysis.Strength, workers int, jsonPath, player string) error {
 	games, err := pgn.ReadGames(pgnPath)
 	if err != nil {
 		return err
@@ -31,6 +31,19 @@ func runBatch(cmd *cobra.Command, pgnPath, enginePath string, strength analysis.
 	preset, err := strength.Preset()
 	if err != nil {
 		return err
+	}
+
+	jobs := make([]analysis.Job, len(games))
+	for i, g := range games {
+		jobs[i] = analysis.Job{Number: i + 1, Text: g}
+	}
+	var agg *analysis.PlayerAgg
+	var playerName string
+	if player != "" {
+		if jobs, playerName, err = selectPlayerJobs(games, player); err != nil {
+			return err
+		}
+		agg = analysis.NewPlayerAgg(playerName)
 	}
 
 	var jw *batchWriter
@@ -51,13 +64,13 @@ func runBatch(cmd *cobra.Command, pgnPath, enginePath string, strength analysis.
 		done   int
 	)
 	start := time.Now()
-	err = analysis.AnalyzeBatch(games,
+	err = analysis.AnalyzeBatch(jobs,
 		analysis.Options{EnginePath: enginePath, Strength: strength},
 		workers,
 		func(r analysis.GameResult) {
 			done++
 			if tty {
-				fmt.Fprintf(errw, "\r\033[Kanalyzing game %d/%d", done, len(games))
+				fmt.Fprintf(errw, "\r\033[Kanalyzing game %d/%d", done, len(jobs))
 			}
 			if r.Err != nil {
 				failed = append(failed, r)
@@ -67,6 +80,13 @@ func runBatch(cmd *cobra.Command, pgnPath, enginePath string, strength analysis.
 				engine = r.Report.Engine
 			}
 			rows = append(rows, newRow(r.Report))
+			if agg != nil {
+				color := "black"
+				if r.Report.White == playerName {
+					color = "white"
+				}
+				agg.Add(r.Report, color)
+			}
 			if jw != nil {
 				jw.add(r.Report)
 			}
@@ -83,8 +103,14 @@ func runBatch(cmd *cobra.Command, pgnPath, enginePath string, strength analysis.
 		return fmt.Errorf("all %d games failed; first error: %w", len(failed), failed[0].Err)
 	}
 
+	var pr *analysis.PlayerReport
+	if agg != nil {
+		r := agg.Report()
+		pr = &r
+	}
+
 	if jw != nil {
-		if err := jw.finish(failed); err != nil {
+		if err := jw.finish(failed, pr); err != nil {
 			return err
 		}
 		fmt.Fprintf(cmd.OutOrStdout(),
@@ -93,7 +119,11 @@ func runBatch(cmd *cobra.Command, pgnPath, enginePath string, strength analysis.
 		return nil
 	}
 
-	printBatch(cmd.OutOrStdout(), engine, strength, preset, rows, failed, duration)
+	if pr != nil {
+		printPlayer(cmd.OutOrStdout(), engine, strength, preset, len(failed), *pr, duration)
+		return nil
+	}
+	printBatch(cmd.OutOrStdout(), engine, strength, preset, rows, failed)
 	return nil
 }
 
@@ -114,7 +144,7 @@ func truncate(s string, n int) string {
 }
 
 func printBatch(w io.Writer, engine string, strength analysis.Strength, p analysis.Preset,
-	rows []gameRow, failed []analysis.GameResult, d time.Duration) {
+	rows []gameRow, failed []analysis.GameResult) {
 
 	const nameWidth = 16
 	rule := strings.Repeat("─", 77)
@@ -126,7 +156,6 @@ func printBatch(w io.Writer, engine string, strength analysis.Strength, p analys
 	info("Engine", engine)
 	info("Strength", fmt.Sprintf("%s (depth %d, hash %d MB)", strength, p.Depth, p.HashMB))
 	info("Games", fmt.Sprintf("%d analyzed, %d failed", len(rows), len(failed)))
-	info("Time", formatDuration(d))
 	fmt.Fprintln(w)
 
 	fmt.Fprintf(w, "  %s  %s  %s  %s  %s  %s  %s\n",
@@ -189,21 +218,19 @@ func (b *batchWriter) add(r *analysis.Report) {
 	b.n++
 }
 
-func (b *batchWriter) finish(failed []analysis.GameResult) error {
+func (b *batchWriter) finish(failed []analysis.GameResult, player *analysis.PlayerReport) error {
 	b.done = true
 	type failure struct {
 		Game  int    `json:"game"`
 		Error string `json:"error"`
 	}
-	b.w.WriteString(`],"errors":[`)
-	for i, f := range failed {
-		data, _ := json.Marshal(failure{Game: f.Index, Error: f.Err.Error()})
-		if i > 0 {
-			b.w.WriteByte(',')
-		}
+	b.w.WriteString("]")
+	if player != nil {
+		data, _ := json.Marshal(player)
+		b.w.WriteString(`,"player":`)
 		b.w.Write(data)
 	}
-	b.w.WriteString("]}\n")
+	b.w.WriteString("}\n")
 	if b.err == nil {
 		b.err = b.w.Flush()
 	}
