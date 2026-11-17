@@ -10,14 +10,14 @@ import (
 
 var viriformatCmd = &cobra.Command{
 	Use:   "viriformat",
-	Short: "Utilities for viriformat (.vf) training data",
+	Short: "utilities for viriformat",
 }
 
 func Cmd() *cobra.Command { return viriformatCmd }
 
 var dedupeCmd = &cobra.Command{
 	Use:   "dedupe",
-	Short: "Remove duplicate games from viriformat files",
+	Short: "remove duplicate games from vf files",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		inputs, err := cmd.Flags().GetStringArray("input")
@@ -55,7 +55,7 @@ var dedupeCmd = &cobra.Command{
 
 var shuffleCmd = &cobra.Command{
 	Use:   "shuffle",
-	Short: "Shuffle a viriformat file at game level",
+	Short: "shuffle vf file at game level",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		input, err := cmd.Flags().GetString("input")
