@@ -8,6 +8,7 @@ import (
 	"github.com/nchandur/ranga-tools/cmd/config"
 	"github.com/nchandur/ranga-tools/cmd/engine"
 	"github.com/nchandur/ranga-tools/cmd/tournament"
+	"github.com/nchandur/ranga-tools/cmd/viriformat"
 	"github.com/spf13/cobra"
 )
 
@@ -28,4 +29,5 @@ func init() {
 	rootCmd.AddCommand(tournament.Cmd())
 	rootCmd.AddCommand(config.Cmd())
 	rootCmd.AddCommand(analyze.Cmd())
+	rootCmd.AddCommand(viriformat.Cmd())
 }
