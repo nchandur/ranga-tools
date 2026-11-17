@@ -1,7 +1,7 @@
 VERSION := 1.0
-BIN_NAME := ranga-tools-$(VERSION)
+BIN_NAME := ranga-tools
 BIN_DIR := bin
-LDFLAGS := -ldflags="-X 'main.version=$(VERSION)'"
+LDFLAGS := -ldflags="-X 'github.com/nchandur/ranga-tools/cmd.version=$(VERSION)'"
 
 .PHONY: build test cover race clean build-docker build-linux build-windows build-mac
 

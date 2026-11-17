@@ -12,9 +12,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "ranga-tools",
-	Short: "A CLI for a doing a bunch of stuff with UCI chess engines",
+	Use:     "ranga-tools",
+	Short:   "A CLI for a doing a bunch of stuff with UCI chess engines",
+	Version: version,
 }
 
 func Execute() {
