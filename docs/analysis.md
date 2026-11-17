@@ -1,4 +1,4 @@
-# Usage Guide for the analyze Command
+# Usage Guide for the `analyze` Command
 
 This guide explains how to perform game analysis using the `analyze` command.
 

@@ -1,6 +1,6 @@
-# Usage Guide for the config Command
+# Usage Guide for the `config` Command
 
-This guide explains how to use the config command.
+This guide explains how to use the `config` command.
 
 ## Set 
 
