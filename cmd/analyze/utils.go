@@ -54,7 +54,7 @@ func isTerminal(w io.Writer) bool {
 }
 
 func printReport(w io.Writer, r *analysis.Report) {
-	title := fmt.Sprintf("%s (White)  vs  %s (Black)", orUnknown(r.White), orUnknown(r.Black))
+	title := fmt.Sprintf("%s (White)  vs  %s (Black)", orUnknown(r.White), orUnknown(r.Black))	
 	tableWidth := labelWidth + 2*(2+cellWidth)
 	rule := strings.Repeat("─", max(utf8.RuneCountInString(title), tableWidth))
 
