@@ -69,6 +69,7 @@ func printReport(w io.Writer, r *analysis.Report, duration time.Duration) {
 	info("Engine", r.Engine)
 	info("Strength", fmt.Sprintf("%s", r.Strength))
 	info("Length", fmt.Sprintf("%d plies", len(r.Moves)))
+	info("Results", r.Result)
 	info("Time", formatDuration(duration))
 	fmt.Fprintln(w)
 

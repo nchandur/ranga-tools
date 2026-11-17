@@ -77,4 +77,5 @@ type Report struct {
 	Moves    []Move   `json:"moves"`
 	Summary  Summary  `json:"summary"`
 	Accuracy Accuracy `json:"accuracy"`
+	Result   string   `json:"result"`
 }

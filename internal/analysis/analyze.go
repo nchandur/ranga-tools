@@ -86,6 +86,15 @@ func Analyze(g *pgn.Game, opts Options) (*Report, error) {
 		Moves:    make([]Move, 0, n),
 	}
 
+	switch g.Result {
+	case 1.0:
+		rep.Result = "White Wins"
+	case 0.0:
+		rep.Result = "Draw"
+	case -1.0:
+		rep.Result = "Black Wins"
+	}
+
 	for k := range n {
 		before, after := evals[k], evals[k+1]
 
