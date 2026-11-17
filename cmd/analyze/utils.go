@@ -5,9 +5,16 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"text/tabwriter"
+	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/nchandur/ranga-tools/internal/analysis"
+)
+
+const (
+	labelWidth = 10
+	cellWidth  = 8
 )
 
 func writeJSON(path string, r *analysis.Report) error {
@@ -47,42 +54,61 @@ func isTerminal(w io.Writer) bool {
 }
 
 func printReport(w io.Writer, r *analysis.Report) {
-	fmt.Fprintf(w, "%s vs %s\n", orUnknown(r.White), orUnknown(r.Black))
-	fmt.Fprintf(w, "Engine: %s | strength: %s (depth %d, hash %d MB)\n\n",
-		r.Engine, r.Strength, r.Depth, r.HashMB)
-
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "MOVE\tEVAL\tCLASS\tBEST")
-	for _, m := range r.Moves {
-		best := ""
-		if m.Class != analysis.Good && m.BestMove != "" {
-			best = m.BestMove
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", moveLabel(m), m.EvalAfter, m.Class, best)
-	}
-	tw.Flush()
+	title := fmt.Sprintf("%s (White)  vs  %s (Black)", orUnknown(r.White), orUnknown(r.Black))
+	tableWidth := labelWidth + 2*(2+cellWidth)
+	rule := strings.Repeat("─", max(utf8.RuneCountInString(title), tableWidth))
 
 	fmt.Fprintln(w)
-	tw = tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "\tBLUNDER\tBAD\tOK\tGOOD")
-	counts := func(name string, c analysis.Counts) {
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%d\n", name, c.Blunder, c.Bad, c.Ok, c.Good)
-	}
-	counts("White", r.Summary.White)
-	counts("Black", r.Summary.Black)
-	tw.Flush()
-}
+	fmt.Fprintf(w, "  %s\n", title)
+	fmt.Fprintf(w, "  %s\n\n", rule)
 
-func moveLabel(m analysis.Move) string {
-	if m.Side == "white" {
-		return fmt.Sprintf("%d. %s", m.Number, m.SAN)
+	info := func(label, value string) {
+		fmt.Fprintf(w, "  %s %s\n", padRight(label, labelWidth), value)
 	}
-	return fmt.Sprintf("%d... %s", m.Number, m.SAN)
+	info("Engine", r.Engine)
+	info("Strength", fmt.Sprintf("%s", r.Strength))
+	info("Length", fmt.Sprintf("%d plies", len(r.Moves)))
+	fmt.Fprintln(w)
+
+	row := func(label, white, black string) {
+		fmt.Fprintf(w, "  %s  %s  %s\n",
+			padRight(label, labelWidth),
+			padLeft(white, cellWidth),
+			padLeft(black, cellWidth))
+	}
+
+	row("", "White", "Black")
+	fmt.Fprintf(w, "  %s\n", rule)
+	row("Accuracy",
+		fmt.Sprintf("%.1f%%", r.Accuracy.White),
+		fmt.Sprintf("%.1f%%", r.Accuracy.Black))
+	fmt.Fprintf(w, "  %s\n", rule)
+
+	sw, sb := r.Summary.White, r.Summary.Black
+	row("Blunder", strconv.Itoa(sw.Blunder), strconv.Itoa(sb.Blunder))
+	row("Bad", strconv.Itoa(sw.Bad), strconv.Itoa(sb.Bad))
+	row("Ok", strconv.Itoa(sw.Ok), strconv.Itoa(sb.Ok))
+	row("Good", strconv.Itoa(sw.Good), strconv.Itoa(sb.Good))
+	fmt.Fprintln(w)
 }
 
 func orUnknown(s string) string {
 	if s == "" {
 		return "?"
+	}
+	return s
+}
+
+func padLeft(s string, n int) string {
+	if d := n - utf8.RuneCountInString(s); d > 0 {
+		return strings.Repeat(" ", d) + s
+	}
+	return s
+}
+
+func padRight(s string, n int) string {
+	if d := n - utf8.RuneCountInString(s); d > 0 {
+		return s + strings.Repeat(" ", d)
 	}
 	return s
 }
