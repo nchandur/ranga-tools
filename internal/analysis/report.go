@@ -41,22 +41,28 @@ type Move struct {
 }
 
 type Counts struct {
-	Blunder int `json:"blunder"`
-	Bad     int `json:"bad"`
-	Ok      int `json:"ok"`
-	Good    int `json:"good"`
+	Blunder    int `json:"blunder"`
+	Mistake    int `json:"mistake"`
+	Inaccuracy int `json:"inaccuracy"`
+	Good       int `json:"good"`
+	Excellent  int `json:"excellent"`
+	Best       int `json:"best"`
 }
 
 func (c *Counts) add(cl Class) {
 	switch cl {
 	case Blunder:
 		c.Blunder++
-	case Bad:
-		c.Bad++
-	case Ok:
-		c.Ok++
+	case Mistake:
+		c.Mistake++
+	case Inaccuracy:
+		c.Inaccuracy++
 	case Good:
 		c.Good++
+	case Excellent:
+		c.Excellent++
+	case Best:
+		c.Best++
 	}
 }
 

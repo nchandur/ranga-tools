@@ -88,9 +88,11 @@ func printReport(w io.Writer, r *analysis.Report, duration time.Duration) {
 	fmt.Fprintf(w, "  %s\n", rule)
 
 	sw, sb := r.Summary.White, r.Summary.Black
+	row("Best", strconv.Itoa(sw.Best), strconv.Itoa(sb.Best))
+	row("Excellent", strconv.Itoa(sw.Excellent), strconv.Itoa(sb.Excellent))
 	row("Good", strconv.Itoa(sw.Good), strconv.Itoa(sb.Good))
-	row("Ok", strconv.Itoa(sw.Ok), strconv.Itoa(sb.Ok))
-	row("Bad", strconv.Itoa(sw.Bad), strconv.Itoa(sb.Bad))
+	row("Inaccuracy", strconv.Itoa(sw.Inaccuracy), strconv.Itoa(sb.Inaccuracy))
+	row("Mistake", strconv.Itoa(sw.Mistake), strconv.Itoa(sb.Mistake))
 	row("Blunder", strconv.Itoa(sw.Blunder), strconv.Itoa(sb.Blunder))
 	fmt.Fprintln(w)
 }

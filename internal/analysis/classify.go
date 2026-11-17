@@ -10,10 +10,12 @@ import (
 type Class string
 
 const (
-	Good    Class = "good"
-	Ok      Class = "ok"
-	Bad     Class = "bad"
-	Blunder Class = "blunder"
+	Best       Class = "best"
+	Excellent  Class = "excellent"
+	Good       Class = "good"
+	Inaccuracy Class = "inaccuracy"
+	Mistake    Class = "mistake"
+	Blunder    Class = "blunder"
 )
 
 // bands lists each class with the most win-probability points
@@ -21,9 +23,12 @@ var bands = []struct {
 	class   Class
 	maxLoss float64
 }{
-	{Good, 2},
-	{Ok, 8},
-	{Bad, 20}}
+	{Best, 0.5},
+	{Excellent, 2},
+	{Good, 5},
+	{Inaccuracy, 10},
+	{Mistake, 20},
+}
 
 // maps lost win probability to label
 func Classify(loss float64) Class {
