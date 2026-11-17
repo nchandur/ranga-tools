@@ -13,3 +13,6 @@ ranga-tools analyze --engine <name-of-engine> --pgn <path-to-pgn> --strength <lo
 - `--pgn`: (Required) The file path to the game PGN. If the file contains multiple games, the tool will only analyze the first one   
 - `--strength`: (Optional) The depth or strength of the analysis. You can specify low, medium, or high. The default value is low.   
 - `--json`: (Optional) The file path where the final analysis report will be saved in JSON format.
+- `--game`: (Optional) Any particular game in the PGN you want analyzed.
+- `--all`: (Optional) Analyzes and generates report for all games in PGN.
+- `--workers`: (Optional) How many analyses you want running in parallel.
