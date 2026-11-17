@@ -118,6 +118,7 @@ func Analyze(g *pgn.Game, opts Options) (*Report, error) {
 			rep.Summary.Black.add(mv.Class)
 		}
 	}
+	rep.Accuracy = computeAccuracy(rep.Moves)
 	return rep, nil
 }
 
