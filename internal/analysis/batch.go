@@ -25,9 +25,8 @@ func AnalyzeBatch(games []string, opts Options, workers int, emit func(GameResul
 		}
 	}()
 	for range workers {
-		o := opts
-		o.Progress = nil
-		a, err := NewAnalyzer(o)
+		opts.Progress = nil
+		a, err := NewAnalyzer(opts)
 		if err != nil {
 			return err
 		}
@@ -62,11 +61,7 @@ func AnalyzeBatch(games []string, opts Options, workers int, emit func(GameResul
 	next := 1
 	for r := range results {
 		pending[r.Index] = r
-		for {
-			p, ok := pending[next]
-			if !ok {
-				break
-			}
+		for p, ok := pending[next]; ok; p, ok = pending[next] {
 			delete(pending, next)
 			emit(p)
 			next++
