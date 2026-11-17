@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -53,7 +54,10 @@ var analyzeCmd = &cobra.Command{
 			Strength:   strength,
 			Progress:   progressPrinter(cmd.ErrOrStderr()),
 		}
+		start := time.Now()
 		report, err := analysis.Analyze(&game, opts)
+		duration := time.Since(start)
+
 		clearProgress(cmd.ErrOrStderr())
 		if err != nil {
 			return err
@@ -67,7 +71,7 @@ var analyzeCmd = &cobra.Command{
 			return nil
 		}
 
-		printReport(cmd.OutOrStdout(), report)
+		printReport(cmd.OutOrStdout(), report, duration)
 		return nil
 	},
 }

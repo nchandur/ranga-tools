@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/nchandur/ranga-tools/internal/analysis"
@@ -53,7 +54,7 @@ func isTerminal(w io.Writer) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-func printReport(w io.Writer, r *analysis.Report) {
+func printReport(w io.Writer, r *analysis.Report, duration time.Duration) {
 	title := fmt.Sprintf("%s (White)  vs  %s (Black)", orUnknown(r.White), orUnknown(r.Black))
 	tableWidth := labelWidth + 2*(2+cellWidth)
 	rule := strings.Repeat("─", max(utf8.RuneCountInString(title), tableWidth))
@@ -68,6 +69,7 @@ func printReport(w io.Writer, r *analysis.Report) {
 	info("Engine", r.Engine)
 	info("Strength", fmt.Sprintf("%s", r.Strength))
 	info("Length", fmt.Sprintf("%d plies", len(r.Moves)))
+	info("Time", formatDuration(duration))
 	fmt.Fprintln(w)
 
 	row := func(label, white, black string) {
@@ -111,4 +113,20 @@ func padRight(s string, n int) string {
 		return s + strings.Repeat(" ", d)
 	}
 	return s
+}
+
+// renders a duration compactly
+func formatDuration(d time.Duration) string {
+	switch {
+	case d < time.Second:
+		return d.Round(time.Millisecond).String()
+	case d < time.Minute:
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	case d < time.Hour:
+		d = d.Round(time.Second)
+		return fmt.Sprintf("%dm %02ds", int(d.Minutes()), int(d.Seconds())%60)
+	default:
+		d = d.Round(time.Minute)
+		return fmt.Sprintf("%dh %02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
 }
