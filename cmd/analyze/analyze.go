@@ -12,7 +12,7 @@ import (
 
 var analyzeCmd = &cobra.Command{
 	Use:   "analyze",
-	Short: "Analyze the first game of a PGN with a registered engine",
+	Short: "analyze the first game of a PGN with a registered engine",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pgnPath, err := cmd.Flags().GetString("pgn")

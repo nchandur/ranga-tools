@@ -10,14 +10,14 @@ import (
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Manage tool settings",
+	Short: "manage tool settings",
 }
 
 func Cmd() *cobra.Command { return configCmd }
 
 var setCmd = &cobra.Command{
 	Use:   "set <key> <value>",
-	Short: "Set a setting (e.g. fastchess-path)",
+	Short: "set a setting",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := settings.Set(args[0], args[1]); err != nil {
@@ -30,7 +30,7 @@ var setCmd = &cobra.Command{
 
 var getCmd = &cobra.Command{
 	Use:   "get <key>",
-	Short: "Print a setting",
+	Short: "print a setting",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := settings.Get(args[0])
