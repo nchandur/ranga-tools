@@ -205,6 +205,35 @@ func SplitGames(data string) []string {
 	return games
 }
 
+// reads a PGN file and returns raw text of each game
+func ReadGames(source string) ([]string, error) {
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return nil, fmt.Errorf("reading file: %w", err)
+	}
+	games := SplitGames(string(data))
+	if len(games) == 0 {
+		return nil, fmt.Errorf("no game found in %s", source)
+	}
+	return games, nil
+}
+
+// parses n games
+func ParseGameN(source string, n int) (Game, error) {
+	games, err := ReadGames(source)
+	if err != nil {
+		return Game{}, err
+	}
+	if n < 1 || n > len(games) {
+		return Game{}, fmt.Errorf("game %d does not exist: %s has %d games", n, source, len(games))
+	}
+	g, err := NewGame(games[n-1])
+	if err != nil {
+		return Game{}, fmt.Errorf("game %d: %w", n, err)
+	}
+	return g, nil
+}
+
 // reads PGN file and parses only its first game.
 func ParseFirstGame(source string) (Game, error) {
 	data, err := os.ReadFile(source)

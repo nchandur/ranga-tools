@@ -42,13 +42,32 @@ var analyzeCmd = &cobra.Command{
 			return err
 		}
 
-		cmd.SilenceUsage = true
-
-		game, err := pgn.ParseFirstGame(pgnPath)
+		gameNum, err := cmd.Flags().GetInt("game")
 		if err != nil {
 			return err
 		}
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			return err
+		}
+		workers, err := cmd.Flags().GetInt("workers")
+		if err != nil {
+			return err
+		}
+		if gameNum < 1 || workers < 1 {
+			return fmt.Errorf("--game and --workers must be at least 1")
+		}
 
+		cmd.SilenceUsage = true
+
+		if all {
+			return runBatch(cmd, pgnPath, entry.Path, strength, workers, jsonPath)
+		}
+
+		game, err := pgn.ParseGameN(pgnPath, gameNum)
+		if err != nil {
+			return err
+		}
 		opts := analysis.Options{
 			EnginePath: entry.Path,
 			Strength:   strength,
@@ -84,6 +103,10 @@ func init() {
 	f.String("engine", "", "registered name of the engine to analyze with")
 	f.String("strength", string(analysis.Low), "analysis strength: low, medium or high")
 	f.String("json", "", "write the full report to this JSON file instead of printing it")
+	f.Int("game", 1, "which game in the PGN to analyze (1-based)")
+	f.Bool("all", false, "analyze every game in the PGN")
+	f.Int("workers", 1, "engines to run in parallel with --all (each uses its own hash memory)")
+	analyzeCmd.MarkFlagsMutuallyExclusive("game", "all")
 
 	analyzeCmd.MarkFlagRequired("pgn")
 	analyzeCmd.MarkFlagRequired("engine")

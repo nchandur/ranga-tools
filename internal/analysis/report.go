@@ -67,6 +67,7 @@ type Summary struct {
 
 // full result of analyzing one game
 type Report struct {
+	Game     int      `json:"game,omitempty"`
 	White    string   `json:"white"`
 	Black    string   `json:"black"`
 	StartFEN string   `json:"start_fen"`
