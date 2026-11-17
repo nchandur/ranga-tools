@@ -11,6 +11,31 @@ import (
 	"github.com/nchandur/ranga-tools/internal/uci"
 )
 
+// owns one engine session
+type Analyzer struct {
+	sess     *uci.Session
+	strength Strength
+	preset   Preset
+	progress func(done, total int)
+}
+
+func NewAnalyzer(opts Options) (*Analyzer, error) {
+	preset, err := opts.Strength.Preset()
+	if err != nil {
+		return nil, err
+	}
+	sess, err := uci.Start(opts.EnginePath, map[string]string{
+		"Hash":    strconv.Itoa(preset.HashMB),
+		"Threads": strconv.Itoa(preset.Threads),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Analyzer{sess: sess, strength: opts.Strength, preset: preset, progress: opts.Progress}, nil
+}
+
+func (a *Analyzer) Close() { a.sess.Close() }
+
 // configures one analysis run
 type Options struct {
 	EnginePath string
@@ -27,8 +52,17 @@ type posEval struct {
 	best   string
 }
 
-// evaluates every position of game once and classifies each move by how much win probability the mover gave up compared with the best line
 func Analyze(g *pgn.Game, opts Options) (*Report, error) {
+	a, err := NewAnalyzer(opts)
+	if err != nil {
+		return nil, err
+	}
+	defer a.Close()
+	return a.Analyze(g)
+}
+
+// evaluates every position of game once and classifies each move by how much win probability the mover gave up compared with the best line
+func (a *Analyzer) Analyze(g *pgn.Game) (*Report, error) {
 	if !g.IsStandard() {
 		return nil, fmt.Errorf("variant %q is not supported (standard chess only)", g.Variant)
 	}
@@ -36,33 +70,22 @@ func Analyze(g *pgn.Game, opts Options) (*Report, error) {
 	if n == 0 {
 		return nil, errors.New("the game has no moves")
 	}
-	preset, err := opts.Strength.Preset()
-	if err != nil {
-		return nil, err
-	}
+	preset := a.preset
 
-	sess, err := uci.Start(opts.EnginePath, map[string]string{
-		"Hash":    strconv.Itoa(preset.HashMB),
-		"Threads": strconv.Itoa(preset.Threads),
-	})
-	if err != nil {
-		return nil, err
-	}
-	defer sess.Close()
-	if err := sess.NewGame(); err != nil {
+	if err := a.sess.NewGame(); err != nil {
 		return nil, err
 	}
 
 	b := g.Board.Preserve()
 	evals := make([]posEval, 0, n+1)
 	for k := 0; k <= n; k++ {
-		ev, err := evaluate(sess, g, &b, k, preset.Depth)
+		ev, err := evaluate(a.sess, g, &b, k, preset.Depth)
 		if err != nil {
 			return nil, fmt.Errorf("position after %d plies: %w", k, err)
 		}
 		evals = append(evals, ev)
-		if opts.Progress != nil {
-			opts.Progress(k+1, n+1)
+		if a.progress != nil {
+			a.progress(k+1, n+1)
 		}
 
 		if k == n {
@@ -79,8 +102,8 @@ func Analyze(g *pgn.Game, opts Options) (*Report, error) {
 		White:    g.White,
 		Black:    g.Black,
 		StartFEN: g.FEN,
-		Engine:   sess.Info.Name,
-		Strength: opts.Strength,
+		Engine:   a.sess.Info.Name,
+		Strength: a.strength,
 		Depth:    preset.Depth,
 		HashMB:   preset.HashMB,
 		Moves:    make([]Move, 0, n),
@@ -89,9 +112,9 @@ func Analyze(g *pgn.Game, opts Options) (*Report, error) {
 	switch g.Result {
 	case 1.0:
 		rep.Result = "White Wins"
-	case 0.0:
+	case 0.5:
 		rep.Result = "Draw"
-	case -1.0:
+	case 0.0:
 		rep.Result = "Black Wins"
 	}
 
