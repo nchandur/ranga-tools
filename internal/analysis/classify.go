@@ -16,25 +16,23 @@ const (
 	Blunder Class = "blunder"
 )
 
-// win-probability points lost by the mover
-const (
-	okLoss      = 2.0  // below this: good
-	badLoss     = 8.0  // below this: ok
-	blunderLoss = 20.0 // below this: bad; at or above: blunder
-)
+// bands lists each class with the most win-probability points
+var bands = []struct {
+	class   Class
+	maxLoss float64
+}{
+	{Good, 2},
+	{Ok, 8},
+	{Bad, 20}}
 
 // maps lost win probability to label
 func Classify(loss float64) Class {
-	switch {
-	case loss < okLoss:
-		return Good
-	case loss < badLoss:
-		return Ok
-	case loss < blunderLoss:
-		return Bad
-	default:
-		return Blunder
+	for _, b := range bands {
+		if loss < b.maxLoss {
+			return b.class
+		}
 	}
+	return Blunder
 }
 
 // converts an engine score to that side's win probability

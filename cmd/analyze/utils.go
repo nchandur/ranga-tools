@@ -54,7 +54,7 @@ func isTerminal(w io.Writer) bool {
 }
 
 func printReport(w io.Writer, r *analysis.Report) {
-	title := fmt.Sprintf("%s (White)  vs  %s (Black)", orUnknown(r.White), orUnknown(r.Black))	
+	title := fmt.Sprintf("%s (White)  vs  %s (Black)", orUnknown(r.White), orUnknown(r.Black))
 	tableWidth := labelWidth + 2*(2+cellWidth)
 	rule := strings.Repeat("─", max(utf8.RuneCountInString(title), tableWidth))
 
@@ -85,10 +85,10 @@ func printReport(w io.Writer, r *analysis.Report) {
 	fmt.Fprintf(w, "  %s\n", rule)
 
 	sw, sb := r.Summary.White, r.Summary.Black
-	row("Blunder", strconv.Itoa(sw.Blunder), strconv.Itoa(sb.Blunder))
-	row("Bad", strconv.Itoa(sw.Bad), strconv.Itoa(sb.Bad))
-	row("Ok", strconv.Itoa(sw.Ok), strconv.Itoa(sb.Ok))
 	row("Good", strconv.Itoa(sw.Good), strconv.Itoa(sb.Good))
+	row("Ok", strconv.Itoa(sw.Ok), strconv.Itoa(sb.Ok))
+	row("Bad", strconv.Itoa(sw.Bad), strconv.Itoa(sb.Bad))
+	row("Blunder", strconv.Itoa(sw.Blunder), strconv.Itoa(sb.Blunder))
 	fmt.Fprintln(w)
 }
 
