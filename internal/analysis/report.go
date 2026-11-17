@@ -76,4 +76,5 @@ type Report struct {
 	HashMB   int      `json:"hash_mb"`
 	Moves    []Move   `json:"moves"`
 	Summary  Summary  `json:"summary"`
+	Accuracy Accuracy `json:"accuracy"`
 }
