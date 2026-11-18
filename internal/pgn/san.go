@@ -6,52 +6,62 @@ import (
 	"github.com/nchandur/ranga-tools/internal/board"
 )
 
-// converts a SAN move string into a valid Move
+var pieces = map[byte][2]board.Piece{
+	'P': {board.WP, board.BP}, 'N': {board.WN, board.BN}, 'B': {board.WB, board.BB},
+	'R': {board.WR, board.BR}, 'Q': {board.WQ, board.BQ}, 'K': {board.WK, board.BK},
+}
+
+func pieceFor(letter byte, side board.Color) board.Piece {
+	p, ok := pieces[letter]
+	if !ok {
+		return board.Empty
+	}
+	if side == board.White {
+		return p[0]
+	}
+	return p[1]
+}
+
+// converts a SAN move into the legal move
 func ParseSAN(b *board.Board, san string) board.Move {
 	san = strings.TrimRight(san, "+#!?")
+	if san == "" {
+		return board.NOMOVE
+	}
 
 	list := board.NewMoveList()
 	list.GenerateMoves(b)
 
-	if san == "O-O" || san == "0-0" {
-		return findCastle(list, b.Side, true)
-	}
-	if san == "O-O-O" || san == "0-0-0" {
-		return findCastle(list, b.Side, false)
+	switch san {
+	case "O-O", "0-0":
+		return findCastle(list, b.Side, 6)
+	case "O-O-O", "0-0-0":
+		return findCastle(list, b.Side, 2)
 	}
 
 	var promo byte
-	if i := strings.IndexByte(san, '='); i != -1 {
-		promo = san[i+1]
-		san = san[:i]
-	} else if len(san) >= 2 {
-		last := san[len(san)-1]
-		if (last == 'Q' || last == 'R' || last == 'B' || last == 'N') &&
-			san[0] >= 'a' && san[0] <= 'h' {
-			promo = last
-			san = san[:len(san)-1]
+	if s, p, ok := strings.Cut(san, "="); ok {
+		san = s
+		if p != "" {
+			promo = p[0]
 		}
+	} else if n := len(san); n >= 2 && san[0] >= 'a' && san[0] <= 'h' && strings.IndexByte("QRBN", san[n-1]) >= 0 {
+		promo, san = san[n-1], san[:n-1]
 	}
 
-	pieceLetter := byte('P')
-	rest := san
-	if len(san) > 0 && san[0] >= 'A' && san[0] <= 'Z' {
-		pieceLetter = san[0]
-		rest = san[1:]
+	piece := byte('P')
+	if san != "" && san[0] >= 'A' && san[0] <= 'Z' {
+		piece, san = san[0], san[1:]
 	}
-
-	rest = strings.Replace(rest, "x", "", 1)
-
-	if len(rest) < 2 {
+	san = strings.Replace(san, "x", "", 1)
+	if len(san) < 2 {
 		return board.NOMOVE
 	}
-	targetStr := rest[len(rest)-2:]
-	disambig := rest[:len(rest)-2]
-
-	if targetStr[0] < 'a' || targetStr[0] > 'h' || targetStr[1] < '1' || targetStr[1] > '8' {
+	target, disambig := san[len(san)-2:], san[:len(san)-2]
+	if target[0] < 'a' || target[0] > 'h' || target[1] < '1' || target[1] > '8' {
 		return board.NOMOVE
 	}
-	to := board.FRtoSq(int('8'-targetStr[1]), int(targetStr[0]-'a'))
+	to := board.FRtoSq(int('8'-target[1]), int(target[0]-'a'))
 
 	wantFile, wantRank := -1, -1
 	for _, r := range disambig {
@@ -63,127 +73,40 @@ func ParseSAN(b *board.Board, san string) board.Move {
 		}
 	}
 
-	wantPiece := pieceFromLetterAndSide(pieceLetter, b.Side)
+	wantPiece := pieceFor(piece, b.Side)
+	wantPromo := board.Empty
+	if promo != 0 {
+		wantPromo = pieceFor(promo, b.Side)
+	}
 
 	for n := range list.Count {
 		m := list.Moves[n]
-
-		if m.Target() != to {
+		src := int(m.Source())
+		if m.Target() != to || b.Mailbox[m.Source()] != wantPiece || m.Promoted(b.Side) != wantPromo {
 			continue
 		}
-
-		// FIX: Use board Mailbox instead of non-existent m.Piece()
-		if b.Mailbox[m.Source()] != wantPiece {
+		if (wantFile >= 0 && src%8 != wantFile) || (wantRank >= 0 && src/8 != wantRank) {
 			continue
 		}
-
-		srcFile := int(m.Source() % 8)
-		srcRank := int(m.Source() / 8)
-		if wantFile != -1 && srcFile != wantFile {
-			continue
+		c := b.Preserve() // generated moves are pseudo-legal: test on a copy
+		if c.MakeMove(m, false) {
+			return m
 		}
-		if wantRank != -1 && srcRank != wantRank {
-			continue
-		}
-
-		if promo != 0 {
-			// FIX: Pass b.Side to m.Promoted()
-			if !promoMatches(m.Promoted(b.Side), promo, b.Side) {
-				continue
-			}
-		} else if m.Promoted(b.Side) != board.Empty {
-			continue
-		}
-
-		copy := b.Preserve()
-		if isLegal := copy.MakeMove(m, false); !isLegal {
-			continue
-		}
-
-		return m
 	}
 	return board.NOMOVE
 }
 
-// locates the castling move for the side to move
-func findCastle(list *board.MoveList, side board.Color, kingside bool) board.Move {
-	var home board.Square
+// returns the castling move
+func findCastle(list *board.MoveList, side board.Color, targetFile int) board.Move {
+	home := board.FRtoSq(0, 4)
 	if side == board.White {
 		home = board.FRtoSq(7, 4)
-	} else {
-		home = board.FRtoSq(0, 4)
 	}
-
-	srcFile := int(home) % 8
-
 	for n := range list.Count {
 		m := list.Moves[n]
-
-		// FIX: Utilize the IsCastle() API exposed in move.go
-		if !m.IsCastle() || m.Source() != home {
-			continue
-		}
-		tgtFile := int(m.Target()) % 8
-		diff := tgtFile - srcFile
-
-		if kingside && diff == 2 {
-			return m
-		}
-		if !kingside && diff == -2 {
+		if m.IsCastle() && m.Source() == home && int(m.Target())%8 == targetFile {
 			return m
 		}
 	}
-
 	return board.NOMOVE
-}
-
-func pieceFromLetterAndSide(letter byte, side board.Color) board.Piece {
-	white := side == board.White
-	switch letter {
-	case 'N':
-		if white {
-			return board.WN
-		}
-		return board.BN
-	case 'B':
-		if white {
-			return board.WB
-		}
-		return board.BB
-	case 'R':
-		if white {
-			return board.WR
-		}
-		return board.BR
-	case 'Q':
-		if white {
-			return board.WQ
-		}
-		return board.BQ
-	case 'K':
-		if white {
-			return board.WK
-		}
-		return board.BK
-	default:
-		if white {
-			return board.WP
-		}
-		return board.BP
-	}
-}
-
-func promoMatches(p board.Piece, letter byte, side board.Color) bool {
-	white := side == board.White
-	switch letter {
-	case 'Q':
-		return p == board.WQ && white || p == board.BQ && !white
-	case 'R':
-		return p == board.WR && white || p == board.BR && !white
-	case 'B':
-		return p == board.WB && white || p == board.BB && !white
-	case 'N':
-		return p == board.WN && white || p == board.BN && !white
-	}
-	return false
 }
