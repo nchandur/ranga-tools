@@ -1,20 +1,17 @@
 package registry
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
+
+	"github.com/nchandur/ranga-tools/internal/jsonfile"
 )
 
-const (
-	appDir   = "ranga-tools" // 	folder created inside os.UserConfigDir()
-	fileName = "engines.json"
-)
+const appDir = "ranga-tools"
 
 var (
 	ErrExists   = errors.New("engine already registered")
@@ -22,7 +19,6 @@ var (
 	ErrBadName  = errors.New("engine name is empty")
 )
 
-// registered engine
 type Entry struct {
 	Name   string `json:"name"`
 	Slug   string `json:"slug"`
@@ -34,20 +30,9 @@ type file struct {
 	Engines []Entry `json:"engines"`
 }
 
-// persists entries in a JSON file
-type Store struct {
-	path string
-}
+type Store struct{ path string }
 
-func Default() (*Store, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return nil, fmt.Errorf("locate user config dir: %w", err)
-	}
-	return &Store{path: filepath.Join(dir, appDir, fileName)}, nil
-}
-
-// returns where all of the tool's files live
+// returns folder where all of the tool's files live
 func Dir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
@@ -56,108 +41,79 @@ func Dir() (string, error) {
 	return filepath.Join(base, appDir), nil
 }
 
-// lowercases name and replaces whitespace with a single hyphen
+func Default() (*Store, error) {
+	dir, err := Dir()
+	if err != nil {
+		return nil, err
+	}
+	return &Store{filepath.Join(dir, "engines.json")}, nil
+}
+
+// lowercases name and joins its words with hyphens
 func Slug(name string) string {
 	return strings.ToLower(strings.Join(strings.Fields(name), "-"))
 }
 
-// add engine
-func (s *Store) Add(e Entry, force bool) error {
-	e.Slug = Slug(e.Name)
-	if e.Slug == "" {
-		return ErrBadName
-	}
-
-	entries, err := s.load()
-	if err != nil {
-		return err
-	}
-
-	for i := range entries {
-		if entries[i].Slug == e.Slug {
-			if !force {
-				return ErrExists
-			}
-			entries[i] = e
-			return s.save(entries)
-		}
-	}
-	return s.save(append(entries, e))
+func (s *Store) load() ([]Entry, error) {
+	var f file
+	err := jsonfile.Load(s.path, &f)
+	return f.Engines, err
 }
 
-// deletes the entry whose slug matches
-func (s *Store) Remove(name string) error {
-	slug := Slug(name)
+func (s *Store) save(entries []Entry) error {
+	return jsonfile.Save(s.path, file{append([]Entry{}, entries...)}) // never "null"
+}
+
+func find(entries []Entry, slug string) int {
+	return slices.IndexFunc(entries, func(e Entry) bool { return e.Slug == slug })
+}
+
+// stores e, replacing an existing entry with the same slug only if force is set
+func (s *Store) Add(e Entry, force bool) error {
+	if e.Slug = Slug(e.Name); e.Slug == "" {
+		return ErrBadName
+	}
 	entries, err := s.load()
 	if err != nil {
 		return err
 	}
-	for i := range entries {
-		if entries[i].Slug == slug {
-			return s.save(append(entries[:i], entries[i+1:]...))
-		}
+	if i := find(entries, e.Slug); i < 0 {
+		entries = append(entries, e)
+	} else if force {
+		entries[i] = e
+	} else {
+		return ErrExists
 	}
-	return ErrNotFound
+	return s.save(entries)
+}
+
+func (s *Store) Remove(name string) error {
+	entries, err := s.load()
+	if err != nil {
+		return err
+	}
+	i := find(entries, Slug(name))
+	if i < 0 {
+		return ErrNotFound
+	}
+	return s.save(slices.Delete(entries, i, i+1))
 }
 
 // returns all entries sorted by slug
 func (s *Store) List() ([]Entry, error) {
 	entries, err := s.load()
-	if err != nil {
-		return nil, err
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Slug < entries[j].Slug })
-	return entries, nil
+	slices.SortFunc(entries, func(a, b Entry) int { return strings.Compare(a.Slug, b.Slug) })
+	return entries, err
 }
 
-// returns the entry whose slug matches
 func (s *Store) Get(name string) (Entry, error) {
-	slug := Slug(name)
 	entries, err := s.load()
 	if err != nil {
 		return Entry{}, err
 	}
-	for _, e := range entries {
-		if e.Slug == slug {
-			return e, nil
-		}
+	i := find(entries, Slug(name))
+	if i < 0 {
+		return Entry{}, ErrNotFound
 	}
-	return Entry{}, ErrNotFound
-}
-
-func (s *Store) load() ([]Entry, error) {
-	data, err := os.ReadFile(s.path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", s.path, err)
-	}
-	var f file
-	if err := json.Unmarshal(data, &f); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", s.path, err)
-	}
-	return f.Engines, nil
-}
-
-func (s *Store) save(entries []Entry) error {
-	if entries == nil {
-		entries = []Entry{}
-	}
-	data, err := json.MarshalIndent(file{Engines: entries}, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode registry: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace %s: %w", s.path, err)
-	}
-	return nil
+	return entries[i], nil
 }

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 
@@ -11,17 +13,15 @@ import (
 	"github.com/nchandur/ranga-tools/internal/uci"
 )
 
-// verifies engine at path via UCI handshake and records it
+// verifies the engine at path via the UCI handshake and records it
 func Register(path, nameOverride string, force bool) (registry.Entry, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return registry.Entry{}, fmt.Errorf("resolve path: %w", err)
+		return registry.Entry{}, err
 	}
-	fi, err := os.Stat(abs)
-	if err != nil {
+	if fi, err := os.Stat(abs); err != nil {
 		return registry.Entry{}, fmt.Errorf("engine path: %w", err)
-	}
-	if fi.IsDir() {
+	} else if fi.IsDir() {
 		return registry.Entry{}, fmt.Errorf("engine path %s is a directory", abs)
 	}
 
@@ -29,7 +29,6 @@ func Register(path, nameOverride string, force bool) (registry.Entry, error) {
 	if err != nil {
 		return registry.Entry{}, fmt.Errorf("verify engine: %w", err)
 	}
-
 	name := strings.TrimSpace(nameOverride)
 	if name == "" {
 		name = info.Name
@@ -42,33 +41,23 @@ func Register(path, nameOverride string, force bool) (registry.Entry, error) {
 	if err != nil {
 		return registry.Entry{}, err
 	}
-
 	entry := registry.Entry{Name: name, Author: info.Author, Path: abs}
-	if err := store.Add(entry, force); err != nil {
-		if errors.Is(err, registry.ErrExists) {
-			return registry.Entry{}, fmt.Errorf("engine %q is already registered; use --force to overwrite it", name)
-		}
+	if err := store.Add(entry, force); errors.Is(err, registry.ErrExists) {
+		return registry.Entry{}, fmt.Errorf("engine %q is already registered; use --force to overwrite it", name)
+	} else if err != nil {
 		return registry.Entry{}, err
 	}
 	return entry, nil
 }
 
-// deregisters engine by name
 func Deregister(name string) error {
 	store, err := registry.Default()
 	if err != nil {
 		return err
 	}
-	if err := store.Remove(name); err != nil {
-		if errors.Is(err, registry.ErrNotFound) {
-			return fmt.Errorf("no engine named %q is registered", name)
-		}
-		return err
-	}
-	return nil
+	return notRegistered(name, store.Remove(name))
 }
 
-// returns all registered engines
 func List() ([]registry.Entry, error) {
 	store, err := registry.Default()
 	if err != nil {
@@ -77,15 +66,40 @@ func List() ([]registry.Entry, error) {
 	return store.List()
 }
 
-// returns the registered engine for name
 func Lookup(name string) (registry.Entry, error) {
 	store, err := registry.Default()
 	if err != nil {
 		return registry.Entry{}, err
 	}
 	entry, err := store.Get(name)
-	if errors.Is(err, registry.ErrNotFound) {
-		return registry.Entry{}, fmt.Errorf("no engine named %q is registered", name)
+	return entry, notRegistered(name, err)
+}
+
+// runs registered engine attached to the terminal until it exits
+func Use(name string) error {
+	entry, err := Lookup(name)
+	if err != nil {
+		return err
 	}
-	return entry, err
+	cmd := exec.Command(entry.Path)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt)
+	defer signal.Stop(sigs)
+
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			return fmt.Errorf("engine %q exited with code %d", entry.Name, exitErr.ExitCode())
+		}
+		return fmt.Errorf("run engine %q: %w", entry.Name, err)
+	}
+	return nil
+}
+
+func notRegistered(name string, err error) error {
+	if errors.Is(err, registry.ErrNotFound) {
+		return fmt.Errorf("no engine named %q is registered", name)
+	}
+	return err
 }
