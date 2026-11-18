@@ -18,12 +18,12 @@ const (
 )
 
 var Classes = []Class{
-	Blunder,
-	Mistake,
-	Inaccuracy,
-	Good,
-	Excellent,
 	Best,
+	Excellent,
+	Good,
+	Inaccuracy,
+	Mistake,
+	Blunder,
 }
 
 // most win-probability points a move can lose and still earn the class

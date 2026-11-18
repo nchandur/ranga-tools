@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"text/tabwriter"
+	"strings"
 	"time"
 
 	eng "github.com/nchandur/ranga-tools/internal/engine"
@@ -40,14 +40,22 @@ func run(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	fi, _ := os.Stderr.Stat()
+	tty := fi != nil && fi.Mode()&os.ModeCharDevice != 0
+
 	start := time.Now()
 	results, err := analysis.AnalyzeBatch(jobs,
 		analysis.Options{EnginePath: entry.Path, Strength: strength}, workers,
 		func(done int) {
-			if len(jobs) > 1 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "analyzed %d/%d games\n", done, len(jobs))
+			if tty && len(jobs) > 1 {
+				n := done * 24 / len(jobs)
+				fmt.Fprintf(os.Stderr, "\r  analyzing  %s%s  %d/%d",
+					strings.Repeat("█", n), strings.Repeat("░", 24-n), done, len(jobs))
 			}
 		})
+	if tty {
+		fmt.Fprint(os.Stderr, "\r\033[K")
+	}
 	if err != nil {
 		return err
 	}
@@ -104,8 +112,12 @@ func run(cmd *cobra.Command, _ []string) error {
 	default:
 		printGame(out, reports[0], took)
 	}
-	for _, e := range errs {
-		fmt.Fprintln(out, "failed:", e)
+	if len(errs) > 0 {
+		fmt.Fprintf(out, "  Failed\n%s\n", rule(56))
+		for _, e := range errs {
+			fmt.Fprintf(out, "  %s\n", e)
+		}
+		fmt.Fprintln(out)
 	}
 	return nil
 }
@@ -157,56 +169,64 @@ func playerJobs(games []string) ([]analysis.Job, string, error) {
 	return jobs, name, nil
 }
 
-// header writes the lines shared by every view
-func header(tw io.Writer, r *analysis.Report, took time.Duration, extra ...string) {
-	fmt.Fprintf(tw, "Engine\t%s\nStrength\t%s (depth %d, hash %d MB)\n", r.Engine, r.Strength, r.Depth, r.HashMB)
-	for _, e := range extra {
-		fmt.Fprintln(tw, e)
+func rule(n int) string {
+	return "  " + strings.Repeat("─", n)
+}
+
+func header(w io.Writer, title string, r *analysis.Report, took time.Duration, extra ...string) {
+	fmt.Fprintf(w, "\n  %s\n%s\n", title, rule(56))
+	fmt.Fprintf(w, "  %-10s %s\n", "Engine", r.Engine)
+	fmt.Fprintf(w, "  %-10s %s\n", "Strength", r.Strength)
+	for i := 0; i+1 < len(extra); i += 2 {
+		fmt.Fprintf(w, "  %-10s %s\n", extra[i], extra[i+1])
 	}
-	fmt.Fprintf(tw, "Time\t%s\n\n", took)
+	fmt.Fprintf(w, "  %-10s %s\n\n", "Time", took)
 }
 
 func printGame(w io.Writer, r *analysis.Report, took time.Duration) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	defer tw.Flush()
-	fmt.Fprintf(tw, "\n%s (White) vs %s (Black)\n\n", r.White, r.Black)
-	header(tw, r, took, fmt.Sprintf("Length\t%d plies", len(r.Moves)), "Result\t"+r.Result)
-	fmt.Fprintln(tw, "\tWhite\tBlack")
-	fmt.Fprintf(tw, "Accuracy\t%.1f%%\t%.1f%%\n", r.Accuracy.White, r.Accuracy.Black)
+	header(w, fmt.Sprintf("%s (White)  vs  %s (Black)", r.White, r.Black), r, took,
+		"Length", fmt.Sprintf("%d plies", len(r.Moves)), "Result", r.Result)
+
+	fmt.Fprintf(w, "  %-12s%9s%9s\n%s\n", "", "White", "Black", rule(30))
+	fmt.Fprintf(w, "  %-12s%8.1f%%%8.1f%%\n%s\n", "Accuracy", r.Accuracy.White, r.Accuracy.Black, rule(30))
 	for _, c := range analysis.Classes {
-		fmt.Fprintf(tw, "%s\t%d\t%d\n", c, r.Summary.White[c], r.Summary.Black[c])
+		fmt.Fprintf(w, "  %-12s%9d%9d\n", c, r.Summary.White[c], r.Summary.Black[c])
 	}
+	fmt.Fprintln(w)
 }
 
 func printBatch(w io.Writer, reports []*analysis.Report, failed int, took time.Duration) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	defer tw.Flush()
-	fmt.Fprintln(tw)
-	header(tw, reports[0], took, fmt.Sprintf("Games\t%d analyzed, %d failed", len(reports), failed))
-	fmt.Fprintln(tw, "#\tWhite\tBlack\tPlies\tAcc W\tAcc B\tBlunders W/B")
+	header(w, "Batch analysis", reports[0], took,
+		"Games", fmt.Sprintf("%d analyzed, %d failed", len(reports), failed))
+
+	fmt.Fprintf(w, "  %4s  %-16s  %-16s  %5s  %7s  %7s  %s\n%s\n",
+		"#", "White", "Black", "Plies", "Acc W", "Acc B", "Blunders", rule(76))
 	for _, r := range reports {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%d\t%.1f%%\t%.1f%%\t%d / %d\n",
+		fmt.Fprintf(w, "  %4d  %-16.16s  %-16.16s  %5d  %6.1f%%  %6.1f%%  %d / %d\n",
 			r.Game, r.White, r.Black, len(r.Moves), r.Accuracy.White, r.Accuracy.Black,
 			r.Summary.White[analysis.Blunder], r.Summary.Black[analysis.Blunder])
 	}
+	fmt.Fprintln(w)
 }
 
 func printPlayer(w io.Writer, r0 *analysis.Report, pr *analysis.PlayerReport, failed int, took time.Duration) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	defer tw.Flush()
-	fmt.Fprintf(tw, "\n%s\n\n", pr.Name)
-	header(tw, r0, took,
-		fmt.Sprintf("Games\t%d analyzed, %d failed", pr.Overall.Games, failed),
-		fmt.Sprintf("Record\t+%d =%d -%d", pr.Wins, pr.Draws, pr.Losses))
-	fmt.Fprintln(tw, "\tOverall\tWhite\tBlack")
-	fmt.Fprintf(tw, "Games\t%d\t%d\t%d\n", pr.Overall.Games, pr.White.Games, pr.Black.Games)
-	fmt.Fprintf(tw, "Accuracy\t%.1f%%\t%.1f%%\t%.1f%%\n", pr.Overall.Accuracy, pr.White.Accuracy, pr.Black.Accuracy)
+	header(w, pr.Name, r0, took,
+		"Games", fmt.Sprintf("%d analyzed, %d failed", pr.Overall.Games, failed),
+		"Record", fmt.Sprintf("+%d =%d -%d", pr.Wins, pr.Draws, pr.Losses))
+
+	fmt.Fprintf(w, "  %-12s%9s%9s%9s\n%s\n", "", "Overall", "White", "Black", rule(39))
+	fmt.Fprintf(w, "  %-12s%9d%9d%9d\n", "Games", pr.Overall.Games, pr.White.Games, pr.Black.Games)
+	fmt.Fprintf(w, "  %-12s%8.1f%%%8.1f%%%8.1f%%\n%s\n", "Accuracy",
+		pr.Overall.Accuracy, pr.White.Accuracy, pr.Black.Accuracy, rule(39))
 	for _, c := range analysis.Classes {
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\n", c, pr.Overall.Summary[c], pr.White.Summary[c], pr.Black.Summary[c])
+		fmt.Fprintf(w, "  %-12s%9d%9d%9d\n", c, pr.Overall.Summary[c], pr.White.Summary[c], pr.Black.Summary[c])
 	}
-	fmt.Fprintln(tw, "\n#\tOpponent\tColor\tResult\tPlies\tAcc\tBlunders")
+
+	fmt.Fprintf(w, "\n  %4s  %-18s  %-5s  %-6s  %5s  %7s  %s\n%s\n",
+		"#", "Opponent", "Color", "Result", "Plies", "Acc", "Blunders", rule(66))
 	for _, g := range pr.Games {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%d\t%.1f%%\t%d\n",
+		fmt.Fprintf(w, "  %4d  %-18.18s  %-5s  %-6s  %5d  %6.1f%%  %d\n",
 			g.Game, g.Opponent, g.Color, g.Result, g.Plies, g.Accuracy, g.Summary[analysis.Blunder])
 	}
+	fmt.Fprintln(w)
 }

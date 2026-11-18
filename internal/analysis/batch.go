@@ -2,7 +2,6 @@ package analysis
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"github.com/nchandur/ranga-tools/internal/pgn"
 )
@@ -19,7 +18,7 @@ type GameResult struct {
 	Err    error
 }
 
-// analyzes jobs with `workers` engines in parallel and returns one result per job
+// analyzes jobs with `workers` engines in parallel and returns one result per job, in job order
 func AnalyzeBatch(jobs []Job, opts Options, workers int, onDone func(done int)) ([]GameResult, error) {
 	workers = min(max(workers, 1), len(jobs))
 
@@ -41,7 +40,8 @@ func AnalyzeBatch(jobs []Job, opts Options, workers int, onDone func(done int)) 
 	next := make(chan int)
 	var (
 		wg   sync.WaitGroup
-		done atomic.Int32
+		mu   sync.Mutex
+		done int
 	)
 	for _, a := range analyzers {
 		wg.Add(1)
@@ -50,7 +50,10 @@ func AnalyzeBatch(jobs []Job, opts Options, workers int, onDone func(done int)) 
 			for i := range next {
 				out[i] = analyzeOne(a, jobs[i])
 				if onDone != nil {
-					onDone(int(done.Add(1)))
+					mu.Lock()
+					done++
+					onDone(done)
+					mu.Unlock()
 				}
 			}
 		}()
