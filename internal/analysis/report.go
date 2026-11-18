@@ -1,7 +1,5 @@
 package analysis
 
-import "fmt"
-
 // score from White's point of view
 type Eval struct {
 	CP       *int   `json:"cp,omitempty"`
@@ -9,22 +7,6 @@ type Eval struct {
 	Terminal string `json:"terminal,omitempty"`
 }
 
-func (e Eval) String() string {
-	switch {
-	case e.Terminal != "":
-		return e.Terminal
-	case e.Mate != nil:
-		if *e.Mate < 0 {
-			return fmt.Sprintf("-#%d", -*e.Mate)
-		}
-		return fmt.Sprintf("#%d", *e.Mate)
-	case e.CP != nil:
-		return fmt.Sprintf("%+.2f", float64(*e.CP)/100)
-	}
-	return "?"
-}
-
-// Move is the verdict on one played move.
 type Move struct {
 	Ply        int     `json:"ply"`
 	Number     int     `json:"move_number"`
@@ -40,38 +22,14 @@ type Move struct {
 	Class      Class   `json:"class"`
 }
 
-type Counts struct {
-	Blunder    int `json:"blunder"`
-	Mistake    int `json:"mistake"`
-	Inaccuracy int `json:"inaccuracy"`
-	Good       int `json:"good"`
-	Excellent  int `json:"excellent"`
-	Best       int `json:"best"`
-}
-
-func (c *Counts) add(cl Class) {
-	switch cl {
-	case Blunder:
-		c.Blunder++
-	case Mistake:
-		c.Mistake++
-	case Inaccuracy:
-		c.Inaccuracy++
-	case Good:
-		c.Good++
-	case Excellent:
-		c.Excellent++
-	case Best:
-		c.Best++
-	}
-}
+// maps class to how many moves earned it
+type Counts map[Class]int
 
 type Summary struct {
 	White Counts `json:"white"`
 	Black Counts `json:"black"`
 }
 
-// full result of analyzing one game
 type Report struct {
 	Game     int      `json:"game,omitempty"`
 	White    string   `json:"white"`

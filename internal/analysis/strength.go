@@ -10,33 +10,22 @@ const (
 	High   Strength = "high"
 )
 
-// holds the engine settings behind a strength level
-type Preset struct {
-	Depth   int
-	HashMB  int
-	Threads int
-}
+// engine settings behind strength level
+type Preset struct{ Depth, HashMB int }
 
-// lists the accepted flag values
-var Strengths = []string{string(Low), string(Medium), string(High)}
+var presets = map[Strength]Preset{
+	Low:    {8, 64},
+	Medium: {12, 64},
+	High:   {16, 64},
+}
 
 func ParseStrength(s string) (Strength, error) {
-	switch st := Strength(s); st {
-	case Low, Medium, High:
-		return st, nil
+	if _, ok := presets[Strength(s)]; !ok {
+		return "", fmt.Errorf("invalid strength %q (use low, medium or high)", s)
 	}
-	return "", fmt.Errorf("invalid strength %q (use low, medium or high)", s)
+	return Strength(s), nil
 }
 
-// returns the depth/hash values for level
-func (s Strength) Preset() (Preset, error) {
-	switch s {
-	case Low:
-		return Preset{Depth: 8, HashMB: 64, Threads: 1}, nil
-	case Medium:
-		return Preset{Depth: 12, HashMB: 64, Threads: 1}, nil
-	case High:
-		return Preset{Depth: 16, HashMB: 64, Threads: 1}, nil
-	}
-	return Preset{}, fmt.Errorf("unknown strength %q", s)
+func (s Strength) Preset() Preset {
+	return presets[s]
 }

@@ -3,7 +3,6 @@ package analysis
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 
 	"github.com/nchandur/ranga-tools/internal/board"
@@ -11,57 +10,44 @@ import (
 	"github.com/nchandur/ranga-tools/internal/uci"
 )
 
+type Options struct {
+	EnginePath string
+	Strength   Strength
+}
+
 // owns one engine session
 type Analyzer struct {
 	sess     *uci.Session
 	strength Strength
 	preset   Preset
-	progress func(done, total int)
 }
 
 func NewAnalyzer(opts Options) (*Analyzer, error) {
-	preset, err := opts.Strength.Preset()
-	if err != nil {
-		return nil, err
-	}
+	preset := opts.Strength.Preset()
 	sess, err := uci.Start(opts.EnginePath, map[string]string{
 		"Hash":    strconv.Itoa(preset.HashMB),
-		"Threads": strconv.Itoa(preset.Threads),
+		"Threads": "1",
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &Analyzer{sess: sess, strength: opts.Strength, preset: preset, progress: opts.Progress}, nil
+	return &Analyzer{sess, opts.Strength, preset}, nil
 }
 
 func (a *Analyzer) Close() { a.sess.Close() }
 
-// configures one analysis run
-type Options struct {
-	EnginePath string
-	Strength   Strength
-	Progress   func(done, total int)
-}
-
-// evaluation of one position before comparison
+// evaluation of one position, before comparison
 type posEval struct {
 	side   string
 	number int
-	win    float64
+	win    float64 // side to move's win %
 	eval   Eval
 	best   string
 }
 
-func Analyze(g *pgn.Game, opts Options) (*Report, error) {
-	a, err := NewAnalyzer(opts)
-	if err != nil {
-		return nil, err
-	}
-	defer a.Close()
-	return a.Analyze(g)
-}
+var results = map[float32]string{1: "White Wins", 0.5: "Draw", 0: "Black Wins"}
 
-// evaluates every position of game once and classifies each move by how much win probability the mover gave up compared with the best line
+// evaluates every position once and classifies each move by the win
 func (a *Analyzer) Analyze(g *pgn.Game) (*Report, error) {
 	if !g.IsStandard() {
 		return nil, fmt.Errorf("variant %q is not supported (standard chess only)", g.Variant)
@@ -70,8 +56,6 @@ func (a *Analyzer) Analyze(g *pgn.Game) (*Report, error) {
 	if n == 0 {
 		return nil, errors.New("the game has no moves")
 	}
-	preset := a.preset
-
 	if err := a.sess.NewGame(); err != nil {
 		return nil, err
 	}
@@ -79,15 +63,11 @@ func (a *Analyzer) Analyze(g *pgn.Game) (*Report, error) {
 	b := g.Board.Preserve()
 	evals := make([]posEval, 0, n+1)
 	for k := 0; k <= n; k++ {
-		ev, err := evaluate(a.sess, g, &b, k, preset.Depth)
+		ev, err := evaluate(a.sess, g, &b, k, a.preset.Depth)
 		if err != nil {
 			return nil, fmt.Errorf("position after %d plies: %w", k, err)
 		}
 		evals = append(evals, ev)
-		if a.progress != nil {
-			a.progress(k+1, n+1)
-		}
-
 		if k == n {
 			break
 		}
@@ -98,65 +78,51 @@ func (a *Analyzer) Analyze(g *pgn.Game) (*Report, error) {
 		b.Ply++
 	}
 
+	result, ok := results[g.Result]
+	if !ok {
+		result = "Unknown"
+	}
 	rep := &Report{
 		White:    g.White,
 		Black:    g.Black,
 		StartFEN: g.FEN,
 		Engine:   a.sess.Info.Name,
 		Strength: a.strength,
-		Depth:    preset.Depth,
-		HashMB:   preset.HashMB,
+		Depth:    a.preset.Depth,
+		HashMB:   a.preset.HashMB,
+		Result:   result,
 		Moves:    make([]Move, 0, n),
-	}
-
-	switch g.Result {
-	case 1.0:
-		rep.Result = "White Wins"
-	case 0.5:
-		rep.Result = "Draw"
-	case 0.0:
-		rep.Result = "Black Wins"
-	default:
-		rep.Result = "Unknown"
+		Summary:  Summary{Counts{}, Counts{}},
 	}
 
 	for k := range n {
 		before, after := evals[k], evals[k+1]
-
-		winBefore := before.win
 		winAfter := 100 - after.win
-		loss := math.Max(0, winBefore-winAfter)
+		loss := max(0, before.win-winAfter)
 		if g.Moves[k] == before.best {
 			loss = 0
 		}
 
 		mv := Move{
-			Ply:        k + 1,
-			Number:     before.number,
-			Side:       before.side,
-			SAN:        g.SAN[k],
-			UCI:        g.Moves[k],
-			BestMove:   before.best,
-			EvalBefore: before.eval,
-			EvalAfter:  after.eval,
-			WinBefore:  winBefore,
-			WinAfter:   winAfter,
-			Loss:       loss,
-			Class:      Classify(loss),
+			Ply: k + 1, Number: before.number, Side: before.side,
+			SAN: g.SAN[k], UCI: g.Moves[k], BestMove: before.best,
+			EvalBefore: before.eval, EvalAfter: after.eval,
+			WinBefore: before.win, WinAfter: winAfter,
+			Loss: loss, Class: Classify(loss),
 		}
 		rep.Moves = append(rep.Moves, mv)
 
-		if mv.Side == "white" {
-			rep.Summary.White.add(mv.Class)
-		} else {
-			rep.Summary.Black.add(mv.Class)
+		counts := rep.Summary.White
+		if mv.Side == "black" {
+			counts = rep.Summary.Black
 		}
+		counts[mv.Class]++
 	}
 	rep.Accuracy = computeAccuracy(rep.Moves)
 	return rep, nil
 }
 
-// evaluate scores from position
+// evaluate scores position after k moves
 func evaluate(s *uci.Session, g *pgn.Game, b *board.Board, k, depth int) (posEval, error) {
 	ev := posEval{side: "white", number: b.Ply/2 + 1}
 	if b.Side == board.Black {
@@ -165,7 +131,7 @@ func evaluate(s *uci.Session, g *pgn.Game, b *board.Board, k, depth int) (posEva
 
 	if !b.HasLegalMove() {
 		if b.InCheck() {
-			ev.win, ev.eval = 0, Eval{Terminal: "checkmate"}
+			ev.eval = Eval{Terminal: "checkmate"}
 		} else {
 			ev.win, ev.eval = 50, Eval{Terminal: "stalemate"}
 		}

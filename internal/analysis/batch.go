@@ -1,8 +1,8 @@
 package analysis
 
 import (
-	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/nchandur/ranga-tools/internal/pgn"
 )
@@ -13,18 +13,14 @@ type Job struct {
 	Text   string
 }
 
-// outcome of one game
 type GameResult struct {
 	Index  int
 	Report *Report
 	Err    error
 }
 
-// analyzes jobs with `workers` engine sessions in parallel
-func AnalyzeBatch(jobs []Job, opts Options, workers int, emit func(GameResult)) error {
-	if len(jobs) == 0 {
-		return nil
-	}
+// analyzes jobs with `workers` engines in parallel and returns one result per job
+func AnalyzeBatch(jobs []Job, opts Options, workers int, onDone func(done int)) ([]GameResult, error) {
 	workers = min(max(workers, 1), len(jobs))
 
 	analyzers := make([]*Analyzer, 0, workers)
@@ -34,58 +30,37 @@ func AnalyzeBatch(jobs []Job, opts Options, workers int, emit func(GameResult)) 
 		}
 	}()
 	for range workers {
-		o := opts
-		o.Progress = nil // per-position progress makes no sense across workers
-		a, err := NewAnalyzer(o)
+		a, err := NewAnalyzer(opts)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		analyzers = append(analyzers, a)
 	}
 
-	type item struct {
-		seq int
-		res GameResult
-	}
-	seqs := make(chan int)
-	results := make(chan item)
-
-	var wg sync.WaitGroup
+	out := make([]GameResult, len(jobs))
+	next := make(chan int)
+	var (
+		wg   sync.WaitGroup
+		done atomic.Int32
+	)
 	for _, a := range analyzers {
 		wg.Add(1)
-		go func(a *Analyzer) {
+		go func() {
 			defer wg.Done()
-			for i := range seqs {
-				results <- item{i, analyzeOne(a, jobs[i])}
+			for i := range next {
+				out[i] = analyzeOne(a, jobs[i])
+				if onDone != nil {
+					onDone(int(done.Add(1)))
+				}
 			}
-		}(a)
+		}()
 	}
-	go func() {
-		for i := range jobs {
-			seqs <- i
-		}
-		close(seqs)
-	}()
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	pending := map[int]GameResult{}
-	next := 0
-	for it := range results {
-		pending[it.seq] = it.res
-		for {
-			p, ok := pending[next]
-			if !ok {
-				break
-			}
-			delete(pending, next)
-			emit(p)
-			next++
-		}
+	for i := range jobs {
+		next <- i
 	}
-	return nil
+	close(next)
+	wg.Wait()
+	return out, nil
 }
 
 func analyzeOne(a *Analyzer, j Job) GameResult {
@@ -99,11 +74,4 @@ func analyzeOne(a *Analyzer, j Job) GameResult {
 	}
 	rep.Game = j.Number
 	return GameResult{Index: j.Number, Report: rep}
-}
-
-func (r GameResult) String() string {
-	if r.Err != nil {
-		return fmt.Sprintf("game %d: %v", r.Index, r.Err)
-	}
-	return fmt.Sprintf("game %d: ok", r.Index)
 }
