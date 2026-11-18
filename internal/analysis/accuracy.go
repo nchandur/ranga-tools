@@ -2,48 +2,42 @@ package analysis
 
 import "math"
 
-// each player's game accuracy
 type Accuracy struct {
 	White float64 `json:"white"`
 	Black float64 `json:"black"`
 }
 
-// converts win-probability points lost into score.
+// converts win-probability points lost into a 0-100 score
 func moveAccuracy(loss float64) float64 {
-	a := 103.1668*math.Exp(-0.04354*loss) - 3.1669
-	return math.Min(100, math.Max(0, a))
+	return min(100, max(0, 103.1668*math.Exp(-0.04354*loss)-3.1669))
 }
 
-// scores each side's moves
+// expects at least one move
 func computeAccuracy(moves []Move) Accuracy {
 	n := len(moves)
-	if n == 0 {
-		return Accuracy{}
+
+	points := make([]float64, n+1)
+	for i, m := range moves {
+		points[i] = whiteWin(m.Side, m.WinBefore)
 	}
+	points[n] = whiteWin(moves[n-1].Side, moves[n-1].WinAfter)
 
-	points := make([]float64, 0, n+1)
-	for _, m := range moves {
-		points = append(points, whiteWin(m.Side, m.WinBefore))
-	}
-	last := moves[n-1]
-	points = append(points, whiteWin(last.Side, last.WinAfter))
+	size := min(max(len(points)/10, 2), 8)
 
-	weights := volatilityWeights(points, n)
-
-	var accs [2][]float64
-	var ws [2][]float64
+	var accs, weights [2][]float64
 	for i, m := range moves {
 		side := 0
 		if m.Side == "black" {
 			side = 1
 		}
+		// weight: volatility of the window of positions around the move
+		start := max(i-(size-2), 0)
+		w := min(12, max(0.5, stddev(points[start:start+size])))
+
 		accs[side] = append(accs[side], moveAccuracy(m.Loss))
-		ws[side] = append(ws[side], weights[i])
+		weights[side] = append(weights[side], w)
 	}
-	return Accuracy{
-		White: combine(accs[0], ws[0]),
-		Black: combine(accs[1], ws[1]),
-	}
+	return Accuracy{combine(accs[0], weights[0]), combine(accs[1], weights[1])}
 }
 
 func whiteWin(side string, moverWin float64) float64 {
@@ -53,44 +47,19 @@ func whiteWin(side string, moverWin float64) float64 {
 	return 100 - moverWin
 }
 
-// returns one weight per move
-func volatilityWeights(points []float64, n int) []float64 {
-	size := min(max(len(points)/10, 2), 8)
-
-	var windows [][]float64
-	first := points[:min(size, len(points))]
-	for i := 0; i < size-2; i++ {
-		windows = append(windows, first)
-	}
-	for i := 0; i+size <= len(points); i++ {
-		windows = append(windows, points[i:i+size])
-	}
-
-	weights := make([]float64, n)
-	for i := range weights {
-		w := 0.5
-		if i < len(windows) {
-			w = math.Min(12, math.Max(0.5, stddev(windows[i])))
-		}
-		weights[i] = w
-	}
-	return weights
-}
-
 func stddev(xs []float64) float64 {
-	var sum float64
+	var sum, sq float64
 	for _, x := range xs {
 		sum += x
 	}
 	mean := sum / float64(len(xs))
-	var sq float64
 	for _, x := range xs {
 		sq += (x - mean) * (x - mean)
 	}
 	return math.Sqrt(sq / float64(len(xs)))
 }
 
-// combine averages volatility-weighted mean and harmonic mean
+// combine averages the volatility-weighted mean and the harmonic mean.
 func combine(accs, weights []float64) float64 {
 	if len(accs) == 0 {
 		return 0
@@ -101,7 +70,6 @@ func combine(accs, weights []float64) float64 {
 		wTotal += weights[i]
 		inv += 1 / math.Max(a, 0.01)
 	}
-	weighted := wSum / wTotal
 	harmonic := float64(len(accs)) / inv
-	return math.Round((weighted+harmonic)/2*10) / 10
+	return math.Round((wSum/wTotal+harmonic)/2*10) / 10
 }

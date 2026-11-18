@@ -1,22 +1,26 @@
 package analysis
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/nchandur/ranga-tools/internal/pgn"
 )
 
-// outcome of one game in a batch
+// one game to analyze
+type Job struct {
+	Number int
+	Text   string
+}
+
 type GameResult struct {
 	Index  int
 	Report *Report
 	Err    error
 }
 
-// analyzes every game using `workers` engine sessions in parallel
-func AnalyzeBatch(games []string, opts Options, workers int, emit func(GameResult)) error {
-	workers = min(max(workers, 1), len(games))
+// analyzes jobs with `workers` engines in parallel and returns one result per job, in job order
+func AnalyzeBatch(jobs []Job, opts Options, workers int, onDone func(done int)) ([]GameResult, error) {
+	workers = min(max(workers, 1), len(jobs))
 
 	analyzers := make([]*Analyzer, 0, workers)
 	defer func() {
@@ -25,67 +29,52 @@ func AnalyzeBatch(games []string, opts Options, workers int, emit func(GameResul
 		}
 	}()
 	for range workers {
-		opts.Progress = nil
 		a, err := NewAnalyzer(opts)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		analyzers = append(analyzers, a)
 	}
 
-	jobs := make(chan int)
-	results := make(chan GameResult)
-
-	var wg sync.WaitGroup
+	out := make([]GameResult, len(jobs))
+	next := make(chan int)
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		done int
+	)
 	for _, a := range analyzers {
 		wg.Add(1)
-		go func(a *Analyzer) {
+		go func() {
 			defer wg.Done()
-			for i := range jobs {
-				results <- analyzeOne(a, i+1, games[i])
+			for i := range next {
+				out[i] = analyzeOne(a, jobs[i])
+				if onDone != nil {
+					mu.Lock()
+					done++
+					onDone(done)
+					mu.Unlock()
+				}
 			}
-		}(a)
+		}()
 	}
-	go func() {
-		for i := range games {
-			jobs <- i
-		}
-		close(jobs)
-	}()
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	pending := map[int]GameResult{}
-	next := 1
-	for r := range results {
-		pending[r.Index] = r
-		for p, ok := pending[next]; ok; p, ok = pending[next] {
-			delete(pending, next)
-			emit(p)
-			next++
-		}
+	for i := range jobs {
+		next <- i
 	}
-	return nil
+	close(next)
+	wg.Wait()
+	return out, nil
 }
 
-func analyzeOne(a *Analyzer, index int, text string) GameResult {
-	g, err := pgn.NewGame(text)
+func analyzeOne(a *Analyzer, j Job) GameResult {
+	g, err := pgn.NewGame(j.Text)
 	if err != nil {
-		return GameResult{Index: index, Err: err}
+		return GameResult{Index: j.Number, Err: err}
 	}
 	rep, err := a.Analyze(&g)
 	if err != nil {
-		return GameResult{Index: index, Err: err}
+		return GameResult{Index: j.Number, Err: err}
 	}
-	rep.Game = index
-	return GameResult{Index: index, Report: rep}
-}
-
-func (r GameResult) String() string {
-	if r.Err != nil {
-		return fmt.Sprintf("game %d: %v", r.Index, r.Err)
-	}
-	return fmt.Sprintf("game %d: ok", r.Index)
+	rep.Game = j.Number
+	return GameResult{Index: j.Number, Report: rep}
 }

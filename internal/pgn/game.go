@@ -9,16 +9,15 @@ import (
 	"github.com/nchandur/ranga-tools/internal/board"
 )
 
-var whiteRe = regexp.MustCompile(`\[White\s*"(.+)"\]`)
-var blackRe = regexp.MustCompile(`\[Black\s*"(.+)"\]`)
-var resultRe = regexp.MustCompile(`\[Result\s*"(.+)"\]`)
-var fenRe = regexp.MustCompile(`\[FEN\s*"(.+)"\]`)
-var taglineRe = regexp.MustCompile(`(?m)^\s*\[.*\]\s*$`)
-var scoreRe = regexp.MustCompile(`\[%eval\s+([+-])?(?:M([0-9]+)|([0-9]+(?:\.[0-9]+)?))\]`)
-var variantRe = regexp.MustCompile(`\[Variant\s*"(.+)"\]`)
+// marks a game with a missing or "*" result
+const ResultUnknown float32 = -1
 
-// marks the start of a new game header block
-var eventTagPattern = regexp.MustCompile(`(?m)^\[Event\s`)
+var (
+	tagRe        = regexp.MustCompile(`(?m)^[ \t]*\[(\w+)\s+"(.*)"\][ \t\r]*$`)
+	eventTagRe   = regexp.MustCompile(`(?m)^\[Event\s`)
+	moveNumRe    = regexp.MustCompile(`^\d+\.+`)
+	resultScores = map[string]float32{"1-0": 1, "0-1": 0, "1/2-1/2": 0.5}
+)
 
 type Game struct {
 	White   string
@@ -31,103 +30,107 @@ type Game struct {
 	board.Board
 }
 
+// returns the header tags and the movetext that follows them
+func parseTags(pgn string) (tags map[string]string, movetext string) {
+	tags, movetext = map[string]string{}, pgn
+	for _, m := range tagRe.FindAllStringSubmatchIndex(pgn, -1) {
+		tags[pgn[m[2]:m[3]]] = pgn[m[4]:m[5]]
+		movetext = pgn[m[1]:]
+	}
+	return
+}
+
+// returns the White and Black tags of a raw game
+func Players(pgn string) (white, black string) {
+	tags, _ := parseTags(pgn)
+	return tags["White"], tags["Black"]
+}
+
 func NewGame(pgn string) (Game, error) {
-	var game Game
-	game.Board = board.NewBoard()
-	game.parsePlayers(pgn)
-	game.parseResult(pgn)
-	game.parseFEN(pgn)
-	game.parseVariant(pgn)
-
-	if err := game.Board.ParseFEN(game.FEN); err != nil {
+	tags, movetext := parseTags(pgn)
+	g := Game{
+		White:   tags["White"],
+		Black:   tags["Black"],
+		Variant: strings.TrimSpace(tags["Variant"]),
+		Result:  ResultUnknown,
+		FEN:     board.START,
+		Board:   board.NewBoard(),
+	}
+	if r, ok := resultScores[tags["Result"]]; ok {
+		g.Result = r
+	}
+	if fen := tags["FEN"]; fen != "" {
+		g.FEN = fen
+	}
+	if err := g.Board.ParseFEN(g.FEN); err != nil {
 		return Game{}, err
 	}
-	if err := game.parseMoves(pgn); err != nil {
+	if err := g.parseMoves(movetext); err != nil {
 		return Game{}, err
 	}
-	return game, nil
+	return g, nil
 }
 
-// parse type of chess variant
-func (g *Game) parseVariant(pgn string) {
-	if m := variantRe.FindStringSubmatch(pgn); len(m) > 0 {
-		g.Variant = strings.TrimSpace(m[1])
-	}
-}
-
-// parse players
-func (g *Game) parsePlayers(pgn string) {
-	if matches := whiteRe.FindStringSubmatch(pgn); len(matches) > 0 {
-		g.White = matches[1]
-	}
-
-	if matches := blackRe.FindStringSubmatch(pgn); len(matches) > 0 {
-		g.Black = matches[1]
-	}
-}
-
-// parse result
-func (g *Game) parseResult(pgn string) {
-	if matches := resultRe.FindStringSubmatch(pgn); len(matches) > 0 {
-		switch matches[1] {
-		case "1-0":
-			g.Result = 1.0
-		case "0-1":
-			g.Result = 0.0
-		case "1/2-1/2":
-			g.Result = 0.5
-		}
-	}
-}
-
-// parse starting fen
-func (g *Game) parseFEN(pgn string) {
-	if matches := fenRe.FindStringSubmatch(pgn); len(matches) > 0 {
-		g.FEN = matches[1]
-	} else {
-		g.FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-	}
-}
-
-// parse moves
-func (g *Game) parseMoves(pgn string) error {
-	pairs, err := tokenizeWithComments(extractMovetext(pgn))
+func (g *Game) parseMoves(movetext string) error {
+	sans, err := tokenize(movetext)
 	if err != nil {
 		return fmt.Errorf("movetext: %w", err)
 	}
-
-	g.Moves = make([]string, 0, len(pairs))
-	g.SAN = make([]string, 0, len(pairs))
+	g.Moves = make([]string, 0, len(sans))
+	g.SAN = sans
 
 	b := g.Board.Preserve()
-
-	for i, p := range pairs {
-		m := ParseSAN(&b, p.san)
-		if m == board.NOMOVE {
-			return fmt.Errorf("ply %d (%q) is illegal or unparseable in position %s", i+1, p.san, b.FEN())
-		}
-		if !b.MakeMove(m, false) {
-			return fmt.Errorf("ply %d (%q) leaves the king in check in position %s", i+1, p.san, b.FEN())
+	for i, san := range sans {
+		m := ParseSAN(&b, san)
+		if m == board.NOMOVE || !b.MakeMove(m, false) {
+			return fmt.Errorf("ply %d (%q) is illegal or unparseable in position %s", i+1, san, b.FEN())
 		}
 		b.Ply++
-
 		g.Moves = append(g.Moves, m.String())
-		g.SAN = append(g.SAN, p.san)
 	}
 	return nil
 }
 
-// returns everything in the PGN after the last header tag
-func extractMovetext(pgn string) string {
-	matches := taglineRe.FindAllStringIndex(pgn, -1)
-	if len(matches) == 0 {
-		return pgn
+// tokenize returns the SAN moves of PGN movetext
+func tokenize(s string) ([]string, error) {
+	var moves []string
+	depth := 0
+	for i := 0; i < len(s); {
+		switch c := s[i]; {
+		case c == '{':
+			end := strings.IndexByte(s[i:], '}')
+			if end < 0 {
+				return nil, fmt.Errorf("unterminated comment at byte %d", i)
+			}
+			i += end + 1
+		case c == '(':
+			depth++
+			i++
+		case c == ')':
+			depth = max(depth-1, 0)
+			i++
+		case depth > 0 || strings.IndexByte(" \t\r\n", c) >= 0:
+			i++
+		default:
+			j := i
+			for j < len(s) && strings.IndexByte(" \t\r\n{(", s[j]) < 0 {
+				j++
+			}
+			word := strings.TrimRight(moveNumRe.ReplaceAllString(s[i:j], ""), "!?")
+			i = j
+			switch word {
+			case "", "1-0", "0-1", "1/2-1/2", "*":
+			default:
+				if word[0] != '$' {
+					moves = append(moves, word)
+				}
+			}
+		}
 	}
-	last := matches[len(matches)-1]
-	return pgn[last[1]:]
+	return moves, nil
 }
 
-// reports whether game is ordinary chess
+// reports whether the game is ordinary chess
 func (g *Game) IsStandard() bool {
 	switch strings.ToLower(g.Variant) {
 	case "", "standard", "chess", "from position":
@@ -136,76 +139,30 @@ func (g *Game) IsStandard() bool {
 	return false
 }
 
-// replays moves on board returns one line per ply
-func (g *Game) GenerateLines() ([]string, error) {
-	lines := make([]string, 0, len(g.Moves))
-
-	for i, uci := range g.Moves {
-		m := g.Board.ParseMove(uci)
-		if m == board.NOMOVE {
-			return nil, fmt.Errorf("move %d (%q): unparseable in position\n%s", i+1, uci, g.Board.FEN())
-		}
-
-		isTacticalMove := m.IsCapture() || m.Promoted(g.Board.Side) != board.Empty
-
-		if ok := g.Board.MakeMove(m, false); !ok {
-			return nil, fmt.Errorf("move %d (%q): illegal move\n%s", i+1, uci, g.Board.FEN())
-		}
-		g.Board.Ply++
-
-		// skip positions immediately following a capture or promotion
-		if isTacticalMove {
-			continue
-		}
-
-		// check for king safety
-		kingPiece := board.WK
-		attackerColor := board.Black
-		if g.Board.Side == board.Black {
-			kingPiece = board.BK
-			attackerColor = board.White
-		}
-
-		kingSq := board.Square(g.Board.PieceBitBoards[kingPiece].GetLSB())
-		inCheck := g.Board.IsSquareAttacked(kingSq, attackerColor)
-		if inCheck {
-			continue
-		}
-
-		lines = append(lines, fmt.Sprintf("%s", g.Board.FEN()))
-	}
-
-	return lines, nil
-}
-
-// splits a file containing multiple concatenated PGN games into individual games
+// splits concatenated PGN games
 func SplitGames(data string) []string {
 	data = strings.TrimPrefix(data, "\ufeff")
-
-	idx := eventTagPattern.FindAllStringIndex(data, -1)
+	idx := eventTagRe.FindAllStringIndex(data, -1)
 	if len(idx) == 0 {
 		if t := strings.TrimSpace(data); t != "" {
 			return []string{t}
 		}
 		return nil
 	}
-
-	games := make([]string, 0, len(idx))
+	var games []string
 	for i, m := range idx {
-		start := m[0]
 		end := len(data)
 		if i+1 < len(idx) {
 			end = idx[i+1][0]
 		}
-		game := strings.TrimSpace(data[start:end])
-		if game != "" {
-			games = append(games, game)
+		if g := strings.TrimSpace(data[m[0]:end]); g != "" {
+			games = append(games, g)
 		}
 	}
 	return games
 }
 
-// reads a PGN file and returns raw text of each game
+// ReadGames returns the raw text of every game in a PGN file.
 func ReadGames(source string) ([]string, error) {
 	data, err := os.ReadFile(source)
 	if err != nil {
@@ -216,84 +173,4 @@ func ReadGames(source string) ([]string, error) {
 		return nil, fmt.Errorf("no game found in %s", source)
 	}
 	return games, nil
-}
-
-// parses n games
-func ParseGameN(source string, n int) (Game, error) {
-	games, err := ReadGames(source)
-	if err != nil {
-		return Game{}, err
-	}
-	if n < 1 || n > len(games) {
-		return Game{}, fmt.Errorf("game %d does not exist: %s has %d games", n, source, len(games))
-	}
-	g, err := NewGame(games[n-1])
-	if err != nil {
-		return Game{}, fmt.Errorf("game %d: %w", n, err)
-	}
-	return g, nil
-}
-
-// reads PGN file and parses only its first game.
-func ParseFirstGame(source string) (Game, error) {
-	data, err := os.ReadFile(source)
-	if err != nil {
-		return Game{}, fmt.Errorf("reading file: %w", err)
-	}
-	games := SplitGames(string(data))
-	if len(games) == 0 {
-		return Game{}, fmt.Errorf("no game found in %s", source)
-	}
-	return NewGame(games[0])
-}
-
-// reads a file containing n concatenated PGN games
-func ParseGamesFromFile(source string) ([]Game, []error) {
-	data, err := os.ReadFile(source)
-	if err != nil {
-		return nil, []error{fmt.Errorf("reading file: %w", err)}
-	}
-
-	pgnGames := SplitGames(string(data))
-	totalGames := len(pgnGames)
-
-	var allGames []Game
-	var errs []error
-	for i, pgnStr := range pgnGames {
-		game, err := NewGame(pgnStr)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("game %d: %w", i+1, err))
-			continue
-		}
-
-		allGames = append(allGames, game)
-		fmt.Printf("\r\033[K[game %d/%d] parsed", i+1, totalGames)
-	}
-
-	fmt.Println()
-	os.Stdout.Sync()
-
-	return allGames, errs
-}
-
-func (g *Game) Print() {
-	fmt.Printf("White: %s\t Black: %s\n", g.White, g.Black)
-
-	switch g.Result {
-	case 0:
-		fmt.Printf("Result: Black Won\n")
-	case 0.5:
-		fmt.Printf("Result: Draw\n")
-	default:
-		fmt.Printf("Result: White Won\n")
-	}
-
-	fmt.Printf("FEN: %s\n", g.FEN)
-
-	for _, move := range g.Moves {
-		fmt.Printf("%s ", move)
-	}
-
-	fmt.Printf("\n")
-
 }
