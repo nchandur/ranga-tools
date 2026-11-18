@@ -16,3 +16,4 @@ ranga-tools analyze --engine <name-of-engine> --pgn <path-to-pgn> --strength <lo
 - `--game`: (Optional) Any particular game in the PGN you want analyzed.
 - `--all`: (Optional) Analyzes and generates report for all games in PGN.
 - `--workers`: (Optional) How many analyses you want running in parallel.
+- `--player`: (Optional) Info card of player in provided PGN. 
