@@ -1,4 +1,4 @@
-VERSION := 1.0
+VERSION := 1.1
 BIN_NAME := ranga-tools
 BIN_DIR := bin
 LDFLAGS := -ldflags="-X 'github.com/nchandur/ranga-tools/cmd.version=$(VERSION)'"
