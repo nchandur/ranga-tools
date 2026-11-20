@@ -77,11 +77,20 @@ func Lookup(name string) (registry.Entry, error) {
 
 // runs registered engine attached to the terminal until it exits
 func Use(name string) error {
+	return run(name)
+}
+
+// runs inbuilt bench command
+func Bench(name string) error {
+	return run(name, "bench")
+}
+
+func run(name string, args ...string) error {
 	entry, err := Lookup(name)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(entry.Path)
+	cmd := exec.Command(entry.Path, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 
 	sigs := make(chan os.Signal, 1)
