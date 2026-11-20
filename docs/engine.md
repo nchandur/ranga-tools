@@ -42,3 +42,13 @@ ranga-tools engine use --name <name-of-engine>
 ```
 
 - `--name`: The name of the engine you want to execute
+
+## Bench
+
+To run bench a registered UCI engine, use the following command.
+
+```bash
+ranga-tools engine bench --name <name-of-engine>
+```
+
+- `--name`: The name of the engine you want to run bench
