@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nchandur/ranga-tools/internal/registry"
 	"github.com/nchandur/ranga-tools/internal/uci"
@@ -41,7 +42,7 @@ func Register(path, nameOverride string, force bool) (registry.Entry, error) {
 	if err != nil {
 		return registry.Entry{}, err
 	}
-	entry := registry.Entry{Name: name, Author: info.Author, Path: abs}
+	entry := registry.Entry{Name: name, Author: info.Author, Path: abs, Created: time.Now()}
 	if err := store.Add(entry, force); errors.Is(err, registry.ErrExists) {
 		return registry.Entry{}, fmt.Errorf("engine %q is already registered; use --force to overwrite it", name)
 	} else if err != nil {

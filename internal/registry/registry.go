@@ -32,7 +32,9 @@ type file struct {
 	Engines []Entry `json:"engines"`
 }
 
-type Store struct{ path string }
+type Store struct {
+	path string
+}
 
 // returns folder where all of the tool's files live
 func Dir() (string, error) {
