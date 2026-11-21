@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/nchandur/ranga-tools/internal/jsonfile"
 )
@@ -20,10 +21,11 @@ var (
 )
 
 type Entry struct {
-	Name   string `json:"name"`
-	Slug   string `json:"slug"`
-	Author string `json:"author"`
-	Path   string `json:"path"`
+	Name    string    `json:"name"`
+	Slug    string    `json:"slug"`
+	Author  string    `json:"author"`
+	Path    string    `json:"path"`
+	Created time.Time `json:"registered_on"`
 }
 
 type file struct {
