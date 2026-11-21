@@ -38,17 +38,15 @@ ranga-tools config set fastchess-path /usr/local/bin/fastchess
 ranga-tools tournament sprt --config sprt.json
 
 # 4. Analyze a player's games
-ranga-tools analyze --engine ranga-1.23 --pgn games.pgn --player HangMateIn
+ranga-tools analyze --engine ranga-1.23 --pgn games.pgn --player niemann
 ```
 
 ## Commands
 
-| Command | What it does | Guide |
-|---|---|---|
-| `engine` | Register, list, deregister, run and benchmark engines | [docs/engine.md](docs/engine.md) |
-| `tournament` | Run `sprt`, `match` and `selftest` tournaments via fastchess | [docs/tournament.md](docs/tournament.md) |
-| `analyze` | Analyze a player's games from a PGN | [docs/analysis.md](docs/analysis.md) |
-| `config` | Read and write tool settings such as the fastchess path | [docs/config.md](docs/config.md) |
-| `viriformat` | Preprocess`.vf` training data | [docs/viriformat.md](docs/viriformat.md) |
+- `engine`: [Link](docs/engine.md)
+- `tournament`: [Link](docs/tournament.md)
+- `analyze`: [Link](docs/analysis.md)
+- `config`: [Link](docs/config.md)
+- `viriformat`: [Link](docs/viriformat.md)
 
 Run `ranga-tools <command> --help` for the flags of any command.
