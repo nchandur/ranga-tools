@@ -14,7 +14,7 @@ import (
 // renders 10-cell gauge for a 0-100 value
 func bar(pct float64) string {
 	n := min(10, max(0, int(pct/10+0.5)))
-	return "[" + strings.Repeat("#", n) + strings.Repeat("-", 10-n) + "]"
+	return "[" + strings.Repeat("*", n) + strings.Repeat("-", 10-n) + "]"
 }
 
 var resultLetter = map[string]string{"win": "W", "draw": "D", "loss": "L", "unknown": "?"}
@@ -44,7 +44,7 @@ func printGame(w io.Writer, r *analysis.Report, took time.Duration) {
 func printGames(w io.Writer, title string, games []analysis.PlayerGame) {
 	fmt.Fprintf(w, "\n  %s\n", title)
 	for _, g := range games {
-		fmt.Fprintf(w, "  #%-4d vs %-16.16s  %s  %s  %4d plies  %5.1f%%  %s\n",
+		fmt.Fprintf(w, "   %-4d vs %-16.16s  %s  %s  %4d plies  %5.1f%%  %s\n",
 			g.Game, g.Opponent, strings.ToUpper(g.Color[:1]), resultLetter[g.Result],
 			g.Plies, g.Accuracy, bar(g.Accuracy))
 	}
